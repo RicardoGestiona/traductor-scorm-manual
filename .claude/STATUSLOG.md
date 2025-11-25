@@ -18,10 +18,12 @@
 - ✅ Configurar pyproject.toml con dependencias
 - ✅ Docker Compose setup completo
 - ✅ README.md principal y del backend
+- ✅ Setup de desarrollo local sin Docker (Python venv + FastAPI)
+- ✅ Subir proyecto a GitHub
 
 ### Overall Progress
-- **Sprint 0**: 40% completado
-- **MVP**: 5% completado
+- **Sprint 0**: 60% completado
+- **MVP**: 8% completado
 - **Estimated completion**: 8 semanas desde hoy
 
 ---
@@ -215,6 +217,108 @@
 
 ---
 
+### [2025-11-25 18:15] - Setup de Desarrollo Local sin Docker
+
+**Context**: El equipo no tiene Docker disponible (macOS versión no soportada), necesitábamos una alternativa para desarrollo local.
+
+**Decision Made**: Configurar desarrollo local con Python virtual environment, sin contenedores.
+
+**Rationale**:
+- Docker no disponible en la máquina de desarrollo
+- Python 3.14 ya instalado (suficiente para el proyecto)
+- Para MVP podemos trabajar sin PostgreSQL/Redis locales
+- FastAPI puede correr standalone para pruebas de endpoints
+- Supabase (cloud) para base de datos cuando sea necesario
+
+**Implementation**:
+
+1. **Virtual Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
+
+2. **Dependencias Core instaladas**:
+   - FastAPI 0.122.0
+   - Uvicorn 0.38.0 (con uvloop, httptools)
+   - Pydantic 2.12.4
+   - Pydantic Settings 2.12.0
+   - Python-dotenv 1.2.1
+
+3. **Configuración .env**:
+   - SECRET_KEY generado para desarrollo
+   - Variables de Supabase/Anthropic configurables
+   - PostgreSQL/Redis URLs presentes pero opcionales
+
+4. **FastAPI corriendo**:
+   ```
+   uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+   - Health check endpoint: ✅ funcionando
+   - Root endpoint: ✅ funcionando
+   - Swagger docs: ✅ funcionando en /docs
+
+**Files Changed**:
+- `backend/venv/` (creado, .gitignored)
+- `backend/.env` (configurado desde .env.example)
+
+**Status**: ✅ Completed
+
+**Next Steps**:
+- Para features que requieran DB: usar Supabase cloud
+- Para Celery/Redis: implementar más adelante o usar Supabase Edge Functions
+
+---
+
+### [2025-11-25 18:20] - Subida del Proyecto a GitHub
+
+**Context**: Proyecto completo con setup funcional, necesitábamos versionarlo y compartirlo en GitHub.
+
+**Decision Made**: Crear repositorio Git, commit inicial, y push a GitHub usando SSH.
+
+**Rationale**:
+- Control de versiones desde el inicio del proyecto
+- Backup en cloud del código
+- Permite colaboración y tracking de cambios
+- GitHub como single source of truth del código
+
+**Implementation**:
+
+1. **Inicialización Git**:
+   ```bash
+   git init
+   git branch -m main
+   ```
+
+2. **Commit inicial**:
+   - 34 archivos incluidos
+   - 4164 líneas de código
+   - .gitignore funcionando correctamente (excluye venv/, .env)
+   - Commit message siguiendo convenciones
+
+3. **Configuración Remote**:
+   - Remote: git@github.com:RicardoGestiona/traductor-scorm-manual.git
+   - Autenticación: SSH (resuelve problema de credenciales HTTPS)
+
+4. **Push exitoso**:
+   ```
+   To github.com:RicardoGestiona/traductor-scorm-manual.git
+    * [new branch]      main -> main
+   ```
+
+**Files Changed**:
+- `.git/` (repositorio inicializado)
+- Todos los archivos del proyecto versionados
+
+**Status**: ✅ Completed
+
+**Next Steps**:
+- Commits regulares al implementar nuevas features
+- Usar branches para features grandes (opcional en MVP)
+- Considerar GitHub Actions para CI/CD (fase posterior)
+
+---
+
 ## 🏗️ ARCHITECTURAL DECISION RECORDS (ADRs)
 
 ### ADR-001: Stack Tecnológico - Python Completo (2025-11-25)
@@ -368,8 +472,9 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
 - **Stories completadas**: 2/21 (10%)
   - ✅ STORY-001: Setup de Documentación
   - ✅ STORY-002: Setup de Backend FastAPI
-- **Sprint 0 progress**: 40%
+- **Sprint 0 progress**: 60%
 - **Estimated velocity**: 3-4 stories/sprint
+- **Commits**: 1 (initial setup)
 
 ### Code Quality
 - **Test coverage**: 0% (no code yet)
