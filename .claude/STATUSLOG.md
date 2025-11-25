@@ -9,7 +9,7 @@
 
 ### Current Focus
 **Sprint**: Sprint 0 - Foundation
-**Story**: STORY-002 - Setup de Backend FastAPI
+**Story**: STORY-003 - Setup de Frontend React
 **Status**: ✅ Completed
 
 ### Today's Goals
@@ -20,11 +20,13 @@
 - ✅ README.md principal y del backend
 - ✅ Setup de desarrollo local sin Docker (Python venv + FastAPI)
 - ✅ Subir proyecto a GitHub
+- ✅ Setup completo de Frontend React + Vite + TypeScript + Tailwind
+- ✅ Conectar frontend con backend
 
 ### Overall Progress
-- **Sprint 0**: 60% completado
-- **MVP**: 8% completado
-- **Estimated completion**: 8 semanas desde hoy
+- **Sprint 0**: 80% completado
+- **MVP**: 12% completado
+- **Estimated completion**: 7 semanas desde hoy
 
 ---
 
@@ -319,6 +321,80 @@
 
 ---
 
+### [2025-11-25 22:45] - Setup Completo de Frontend React
+
+**Context**: Backend funcionando, necesitábamos crear la interfaz web para interactuar con la API.
+
+**Decision Made**: Crear frontend con React + Vite + TypeScript + Tailwind CSS, siguiendo arquitectura moderna.
+
+**Rationale**:
+- Vite proporciona HMR ultra-rápido para desarrollo
+- TypeScript para type safety end-to-end
+- Tailwind CSS para desarrollo rápido de UI responsive
+- React 18 con hooks modernos
+- Estructura escalable de carpetas (components, pages, services)
+
+**Implementation**:
+
+1. **Proyecto Vite creado**:
+   ```bash
+   npm create vite@latest frontend -- --template react-ts
+   ```
+
+2. **Tailwind CSS configurado**:
+   - tailwind.config.js con paths correctos
+   - postcss.config.js
+   - index.css con directivas @tailwind
+
+3. **Estructura de carpetas**:
+   ```
+   src/
+   ├── components/      # Layout.tsx
+   ├── pages/          # Home.tsx
+   ├── services/       # api.ts (cliente FastAPI)
+   └── types/          # TypeScript types
+   ```
+
+4. **Componentes implementados**:
+   - **Layout**: Navbar + Main + Footer
+   - **Home**: Página principal con verificación de backend
+   - **API Service**: Cliente para comunicarse con FastAPI
+
+5. **Features**:
+   - Conexión automática con backend en http://127.0.0.1:8000
+   - Verificación de health check
+   - UI responsive con Tailwind
+   - Cards de "Próximamente" para features futuras
+   - Links a API docs y GitHub
+
+6. **Servidor corriendo**:
+   ```
+   npm run dev
+   Frontend: http://localhost:5173
+   Backend: http://127.0.0.1:8000
+   ```
+
+**Files Changed**:
+- `frontend/` (22 archivos creados):
+  - package.json con dependencias
+  - vite.config.ts
+  - tailwind.config.js, postcss.config.js
+  - src/App.tsx, index.css, main.tsx
+  - src/components/Layout.tsx
+  - src/pages/Home.tsx
+  - src/services/api.ts
+  - README.md
+  - .env.example
+
+**Status**: ✅ Completed
+
+**Next Steps**:
+- STORY-011: Implementar componente de Upload de SCORM
+- STORY-012: Crear selector de idiomas
+- Implementar routing cuando haya múltiples páginas
+
+---
+
 ## 🏗️ ARCHITECTURAL DECISION RECORDS (ADRs)
 
 ### ADR-001: Stack Tecnológico - Python Completo (2025-11-25)
@@ -469,12 +545,16 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
 ## 📈 METRICS & KPIs
 
 ### Development Velocity
-- **Stories completadas**: 2/21 (10%)
+- **Stories completadas**: 3/21 (14%)
   - ✅ STORY-001: Setup de Documentación
   - ✅ STORY-002: Setup de Backend FastAPI
-- **Sprint 0 progress**: 60%
+  - ✅ STORY-003: Setup de Frontend React
+- **Sprint 0 progress**: 80%
 - **Estimated velocity**: 3-4 stories/sprint
-- **Commits**: 1 (initial setup)
+- **Commits**: 3
+  - Initial setup (34 archivos)
+  - STATUSLOG updates
+  - Frontend setup (22 archivos)
 
 ### Code Quality
 - **Test coverage**: 0% (no code yet)
