@@ -23,6 +23,8 @@ from app.models.scorm import (
     ScormItem,
     ScormResource,
     ScormValidationResult,
+    ScormObjective,
+    ScormSequencingRules,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,10 +50,15 @@ class ScormParser:
 
     # Namespaces comunes de SCORM
     NAMESPACES = {
+        # SCORM 1.2
         "imscp": "http://www.imsproject.org/xsd/imscp_rootv1p1p2",
         "imscp12": "http://www.imsglobal.org/xsd/imscp_v1p1",
         "adlcp": "http://www.adlnet.org/xsd/adlcp_rootv1p2",
         "imsmd": "http://www.imsglobal.org/xsd/imsmd_v1p2",
+        # SCORM 2004
+        "imsss": "http://www.imsglobal.org/xsd/imsss",  # Sequencing
+        "adlseq": "http://www.adlnet.org/xsd/adlseq_v1p3",  # Sequencing ADL
+        "adlnav": "http://www.adlnet.org/xsd/adlnav_v1p3",  # Navigation
         "xsi": "http://www.w3.org/2001/XMLSchema-instance",
     }
 
@@ -319,6 +326,11 @@ class ScormParser:
         for child_elem in child_elements:
             children.append(self._parse_item(child_elem))
 
+        # SCORM 2004: Parsear sequencing y objectives
+        objectives = self._parse_objectives(item_elem)
+        sequencing = self._parse_sequencing(item_elem)
+        completion_threshold = self._parse_completion_threshold(item_elem)
+
         return ScormItem(
             identifier=item_id,
             title=title,
@@ -326,7 +338,130 @@ class ScormParser:
             parameters=parameters,
             is_visible=is_visible,
             children=children,
+            objectives=objectives,
+            sequencing=sequencing,
+            completion_threshold=completion_threshold,
         )
+
+    def _parse_objectives(self, item_elem: etree._Element) -> List[ScormObjective]:
+        """Parsear objetivos de SCORM 2004."""
+        objectives = []
+
+        # Buscar sequencing/objectives
+        seq_elem = item_elem.find(".//sequencing", self.NAMESPACES)
+        if seq_elem is None:
+            seq_elem = item_elem.find(".//{*}sequencing")
+
+        if seq_elem is None:
+            return objectives
+
+        # Buscar objectives container dentro de sequencing
+        objectives_container = seq_elem.find(".//objectives", self.NAMESPACES)
+        if objectives_container is None:
+            objectives_container = seq_elem.find(".//{*}objectives")
+
+        if objectives_container is None:
+            return objectives
+
+        # Buscar AMBOS primaryObjective y objective dentro del container
+        # SCORM 2004 puede tener primaryObjective y múltiples objective secundarios
+        obj_elements = []
+
+        # Buscar primaryObjective
+        primary_objs = objectives_container.findall(".//primaryObjective", self.NAMESPACES)
+        if not primary_objs:
+            primary_objs = objectives_container.findall(".//{*}primaryObjective")
+        obj_elements.extend(primary_objs)
+
+        # Buscar objective (secundarios)
+        secondary_objs = objectives_container.findall(".//objective", self.NAMESPACES)
+        if not secondary_objs:
+            secondary_objs = objectives_container.findall(".//{*}objective")
+        obj_elements.extend(secondary_objs)
+
+        for obj_elem in obj_elements:
+            obj_id = obj_elem.get("objectiveID", "")
+            if not obj_id:
+                continue
+
+            # Parsear minNormalizedMeasure si existe
+            min_score_elem = obj_elem.find(".//minNormalizedMeasure", self.NAMESPACES)
+            if min_score_elem is None:
+                min_score_elem = obj_elem.find(".//{*}minNormalizedMeasure")
+
+            min_score = None
+            if min_score_elem is not None and min_score_elem.text:
+                try:
+                    min_score = float(min_score_elem.text)
+                except ValueError:
+                    pass
+
+            satisfied_by_measure = obj_elem.get("satisfiedByMeasure", "false").lower() == "true"
+
+            objectives.append(
+                ScormObjective(
+                    identifier=obj_id,
+                    satisfied_by_measure=satisfied_by_measure,
+                    min_normalized_measure=min_score,
+                )
+            )
+
+        return objectives
+
+    def _parse_sequencing(self, item_elem: etree._Element) -> Optional[ScormSequencingRules]:
+        """Parsear reglas de secuenciación de SCORM 2004."""
+        seq_elem = item_elem.find(".//sequencing", self.NAMESPACES)
+        if seq_elem is None:
+            seq_elem = item_elem.find(".//{*}sequencing")
+
+        if seq_elem is None:
+            return None
+
+        # Buscar controlMode
+        control_elem = seq_elem.find(".//controlMode", self.NAMESPACES)
+        if control_elem is None:
+            control_elem = seq_elem.find(".//{*}controlMode")
+
+        if control_elem is None:
+            # Si hay sequencing pero no controlMode, retornar reglas default
+            return ScormSequencingRules()
+
+        # Extraer atributos de control mode
+        choice = control_elem.get("choice", "true").lower() == "true"
+        flow = control_elem.get("flow", "false").lower() == "true"
+        forward_only = control_elem.get("forwardOnly", "false").lower() == "true"
+
+        # Buscar constrainedChoice
+        constrained = seq_elem.get("constrainedChoice", "false").lower() == "true"
+        prevent_activation = seq_elem.get("preventActivation", "false").lower() == "true"
+
+        return ScormSequencingRules(
+            control_mode_choice=choice,
+            control_mode_flow=flow,
+            control_mode_forward_only=forward_only,
+            prevent_activation=prevent_activation,
+            constrained_choice=constrained,
+        )
+
+    def _parse_completion_threshold(self, item_elem: etree._Element) -> Optional[float]:
+        """Parsear completion threshold de SCORM 2004."""
+        # Buscar completionThreshold
+        threshold_elem = item_elem.find(".//completionThreshold", self.NAMESPACES)
+        if threshold_elem is None:
+            threshold_elem = item_elem.find(".//{*}completionThreshold")
+
+        if threshold_elem is None:
+            return None
+
+        # Extraer minProgressMeasure
+        min_progress = threshold_elem.get("minProgressMeasure")
+        if min_progress:
+            try:
+                return float(min_progress)
+            except ValueError:
+                pass
+
+        return None
 
     def _parse_resources(self, root: etree._Element) -> List[ScormResource]:
         """Parsear recursos del manifest."""

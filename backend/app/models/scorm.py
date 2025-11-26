@@ -30,6 +30,29 @@ class ScormResource(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
 
+# Modelos para SCORM 2004 - Sequencing
+
+
+class ScormObjective(BaseModel):
+    """Objetivo de aprendizaje (SCORM 2004)."""
+
+    identifier: str
+    satisfied_by_measure: bool = False
+    min_normalized_measure: Optional[float] = None
+
+
+class ScormSequencingRules(BaseModel):
+    """Reglas de secuenciación (SCORM 2004)."""
+
+    # Simplified model - SCORM 2004 sequencing es muy complejo
+    # Guardamos info básica para preservar estructura
+    control_mode_choice: bool = True
+    control_mode_flow: bool = False
+    control_mode_forward_only: bool = False
+    prevent_activation: bool = False
+    constrained_choice: bool = False
+
+
 class ScormItem(BaseModel):
     """Item dentro de una organización SCORM."""
 
@@ -39,6 +62,11 @@ class ScormItem(BaseModel):
     parameters: Optional[str] = None
     is_visible: bool = True
     children: List["ScormItem"] = Field(default_factory=list)  # Items hijos
+
+    # SCORM 2004 specific
+    objectives: List[ScormObjective] = Field(default_factory=list)
+    sequencing: Optional[ScormSequencingRules] = None
+    completion_threshold: Optional[float] = None
 
 
 class ScormOrganization(BaseModel):
