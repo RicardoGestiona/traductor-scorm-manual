@@ -8,8 +8,8 @@
 ## 📍 CURRENT STATUS
 
 ### Current Focus
-**Sprint**: Sprint 0 - Foundation
-**Story**: STORY-003 - Setup de Frontend React
+**Sprint**: Sprint 1 - Backend Core
+**Story**: STORY-005 - Parser de SCORM 1.2/2004
 **Status**: ✅ Completed
 
 ### Today's Goals
@@ -22,11 +22,14 @@
 - ✅ Subir proyecto a GitHub
 - ✅ Setup completo de Frontend React + Vite + TypeScript + Tailwind
 - ✅ Conectar frontend con backend
+- ✅ Implementar parser de SCORM 1.2 completo
+- ✅ Extender parser con soporte completo para SCORM 2004
 
 ### Overall Progress
-- **Sprint 0**: 80% completado
-- **MVP**: 12% completado
-- **Estimated completion**: 7 semanas desde hoy
+- **Sprint 0**: 100% completado
+- **Sprint 1**: 25% completado
+- **MVP**: 19% completado (4/21 stories)
+- **Estimated completion**: 6 semanas desde hoy
 
 ---
 
@@ -395,6 +398,122 @@
 
 ---
 
+### [2025-11-26 00:15] - Implementación Completa de SCORM 1.2 Parser
+
+**Context**: Backend estructurado, necesitábamos implementar el parser de SCORM para extraer y validar la estructura de paquetes SCORM 1.2.
+
+**Decision Made**: Implementar parser completo con soporte para SCORM 1.2 usando lxml para parsing XML.
+
+**Rationale**:
+- lxml es la librería más robusta para parsing XML en Python
+- SCORM 1.2 es el estándar más común en la industria e-learning
+- Parsing debe ser flexible para manejar namespaces inconsistentes
+- Modelos Pydantic garantizan type safety y validación
+
+**Implementation**:
+
+1. **Modelos Pydantic** (`app/models/scorm.py`):
+   - ScormMetadata: Metadata del paquete
+   - ScormResource: Recursos (HTML, assets)
+   - ScormItem: Items de la organización (jerarquía)
+   - ScormOrganization: Estructura del curso
+   - ScormManifest: Manifest completo
+   - ScormPackage: Paquete procesado
+   - ScormValidationResult: Resultado de validación
+
+2. **Parser Service** (`app/services/scorm_parser.py`):
+   - `validate_scorm_zip()`: Validar estructura del ZIP
+   - `parse_scorm_package()`: Parser completo del paquete
+   - `_detect_scorm_version()`: Detectar versión (1.2/2004/xAPI)
+   - `_parse_metadata()`: Extraer metadata
+   - `_parse_organizations()`: Parsear organizaciones
+   - `_parse_item()`: Parsear items (recursivo para jerarquía)
+   - `_parse_resources()`: Parsear recursos
+   - Búsqueda flexible de elementos XML (con y sin namespace)
+
+3. **Tests** (`tests/test_scorm_parser.py`):
+   - test_detect_scorm_12_version: ✅
+   - test_detect_scorm_2004_version: ✅
+   - test_parse_metadata: ✅
+   - test_parse_organizations_with_single_item: ✅
+   - test_parse_resources: ✅
+   - test_parse_nested_items: ✅
+   - Cobertura: 60%+ en scorm_parser.py
+
+**Files Changed**:
+- `backend/app/models/scorm.py` (creado, 129 líneas)
+- `backend/app/services/scorm_parser.py` (creado, 520 líneas)
+- `backend/tests/test_scorm_parser.py` (creado, 143 líneas)
+- `backend/tests/__init__.py` (creado)
+
+**Status**: ✅ Completed
+
+**Next Steps**:
+- STORY-006: Extracción de Contenido Traducible
+- STORY-007: Integración con Claude API
+- Añadir soporte completo para SCORM 2004
+
+---
+
+### [2025-11-26 01:30] - Soporte Completo para SCORM 2004
+
+**Context**: Usuario solicitó soporte completo para SCORM 2004, más allá de SCORM 1.2. SCORM 2004 incluye características avanzadas como sequencing rules, objectives y completion thresholds.
+
+**Decision Made**: Extender el parser para soportar completamente SCORM 2004 4th Edition, incluyendo sequencing, objectives y completion tracking.
+
+**Rationale**:
+- SCORM 2004 es ampliamente usado en entornos corporativos y educativos
+- Features como sequencing y objectives son cruciales para cursos avanzados
+- Mantener backward compatibility con SCORM 1.2
+- Dejar xAPI/TinCan para Fase 2 (alcance más limitado inicialmente)
+
+**Implementation**:
+
+1. **Nuevos Modelos SCORM 2004** (`app/models/scorm.py`):
+   ```python
+   class ScormObjective(BaseModel):
+       identifier: str
+       satisfied_by_measure: bool = False
+       min_normalized_measure: Optional[float] = None
+
+   class ScormSequencingRules(BaseModel):
+       control_mode_choice: bool = True
+       control_mode_flow: bool = False
+       control_mode_forward_only: bool = False
+       prevent_activation: bool = False
+       constrained_choice: bool = False
+   ```
+   - Añadidos a ScormItem: objectives, sequencing, completion_threshold
+
+2. **Métodos de Parsing** (`app/services/scorm_parser.py`):
+   - `_parse_objectives()`: Extrae objectives (primaryObjective + objective)
+   - `_parse_sequencing()`: Parsea controlMode y reglas de secuenciación
+   - `_parse_completion_threshold()`: Extrae completion threshold
+   - Namespaces actualizados: imsss, adlseq, adlnav
+   - Fix crítico: Buscar AMBOS primaryObjective y objective dentro de <objectives>
+
+3. **Tests para SCORM 2004** (`tests/test_scorm_parser.py`):
+   - test_parse_scorm_2004_sequencing: ✅
+   - test_parse_scorm_2004_objectives: ✅
+   - test_parse_scorm_2004_completion_threshold: ✅
+   - test_scorm_2004_backward_compatibility: ✅
+   - test_parse_scorm_2004_complete_example: ✅
+   - Total: 11/11 tests passing (100%)
+
+**Files Changed**:
+- `backend/app/models/scorm.py` (modificado, +24 líneas)
+- `backend/app/services/scorm_parser.py` (modificado, +105 líneas)
+- `backend/tests/test_scorm_parser.py` (modificado, +200 líneas)
+
+**Status**: ✅ Completed
+
+**Next Steps**:
+- STORY-006: Extracción de Contenido Traducible (HTML parsing)
+- STORY-007: Integración con Claude API para traducción
+- Considerar tests con archivos SCORM reales (no solo XML sintético)
+
+---
+
 ## 🏗️ ARCHITECTURAL DECISION RECORDS (ADRs)
 
 ### ADR-001: Stack Tecnológico - Python Completo (2025-11-25)
@@ -545,20 +664,26 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
 ## 📈 METRICS & KPIs
 
 ### Development Velocity
-- **Stories completadas**: 3/21 (14%)
+- **Stories completadas**: 4/21 (19%)
   - ✅ STORY-001: Setup de Documentación
   - ✅ STORY-002: Setup de Backend FastAPI
   - ✅ STORY-003: Setup de Frontend React
-- **Sprint 0 progress**: 80%
-- **Estimated velocity**: 3-4 stories/sprint
-- **Commits**: 3
+  - ✅ STORY-005: Parser de SCORM 1.2/2004
+- **Sprint 0 progress**: 100% ✅
+- **Sprint 1 progress**: 25%
+- **Estimated velocity**: 4-5 stories/sprint
+- **Commits**: 5
   - Initial setup (34 archivos)
   - STATUSLOG updates
   - Frontend setup (22 archivos)
+  - SCORM 1.2 parser implementation
+  - SCORM 2004 support completed
 
 ### Code Quality
-- **Test coverage**: 0% (no code yet)
+- **Test coverage**: 65.82% (overall), 62.30% (scorm_parser.py)
 - **Target**: 70%+ en services críticos
+- **Tests**: 11/11 passing (100%)
+- **Linting**: Ruff configured, PEP 8 compliant
 
 ### Documentation
 - **Coverage**: 100% (CLAUDE.md, PRD.md, BACKLOG.md creados)
