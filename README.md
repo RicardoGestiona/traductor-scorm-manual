@@ -74,11 +74,51 @@ docker-compose up --build
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 
-### Desarrollo Local
+### Desarrollo Local (sin Docker)
+
+**Requisitos**:
+- Python 3.11+
+- Node.js 18+
+- npm
+
+**Setup inicial**:
+
+```bash
+# Backend
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+cp .env.example .env
+# Editar .env con tus API keys
+
+# Frontend (en otra terminal)
+cd frontend
+npm install
+cp .env.example .env
+```
+
+**Iniciar servidores**:
+
+```bash
+# Terminal 1 - Backend
+cd backend
+source venv/bin/activate
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2 - Frontend
+cd frontend
+npm run dev
+```
+
+**URLs**:
+- Frontend: http://localhost:5173
+- Backend API: http://127.0.0.1:8000
+- API Docs: http://127.0.0.1:8000/docs
 
 Ver instrucciones detalladas en:
 - Backend: [`backend/README.md`](backend/README.md)
-- Frontend: [`frontend/README.md`](frontend/README.md) *(Próximamente)*
+- Frontend: [`frontend/README.md`](frontend/README.md)
 
 ---
 
