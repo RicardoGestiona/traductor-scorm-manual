@@ -20,11 +20,14 @@ Sistema web + API para traducir paquetes SCORM (1.2, 2004, xAPI) a múltiples id
 ✅ **Parsing de sequencing rules** y objectives (SCORM 2004)
 ✅ **Validación de estructura** de paquetes SCORM
 ✅ **Backend API funcionando** (FastAPI + health check)
-✅ **Frontend React** conectado con backend
-🔄 Traducción automática con IA contextual (en desarrollo)
-🔄 Interfaz web de upload (en desarrollo)
-⏳ API REST completa para integraciones
-⏳ Progreso en tiempo real
+✅ **Frontend React completo** con upload, progress tracking y downloads
+✅ **Traducción automática con Claude AI** (batch processing, retry logic)
+✅ **Autenticación con Supabase Auth** (signup, login, JWT tokens)
+✅ **Protección de endpoints** (ownership verification, 401/403 handling)
+✅ **Celery + Redis** para procesamiento asíncrono
+✅ **Docker Compose** con stack completo (frontend + backend + Celery + DB)
+✅ **Progreso en tiempo real** con polling de status
+✅ **Storage en Supabase** para SCORM packages y traducciones
 
 ---
 
@@ -141,16 +144,22 @@ Documentación interactiva: `http://localhost:8000/docs`
 **Endpoints implementados**:
 
 ```http
+# Autenticación
+POST /api/v1/auth/signup               # Registrar nuevo usuario
+POST /api/v1/auth/login                # Iniciar sesión
+POST /api/v1/auth/logout               # Cerrar sesión
+GET  /api/v1/auth/me                   # Obtener usuario actual
+POST /api/v1/auth/refresh              # Renovar access token
+
+# Traducción (requieren autenticación)
 POST /api/v1/upload                    # Subir paquete SCORM
 GET  /api/v1/jobs/{job_id}            # Status del job (polling)
 GET  /api/v1/jobs/{job_id}/details    # Detalles completos del job
-GET  /health                           # Health check
-```
+GET  /api/v1/download/{job_id}/{lang} # Descargar paquete traducido
+GET  /api/v1/download/{job_id}/all    # Descargar todos los idiomas
 
-**Próximos endpoints**:
-```http
-GET  /api/v1/languages                # Idiomas soportados (TODO)
-GET  /api/v1/jobs/{job_id}/download   # Download traducido (TODO)
+# Health
+GET  /health                           # Health check
 ```
 
 Ver ejemplos completos en [backend/README.md](backend/README.md#-api-endpoints)
@@ -207,43 +216,87 @@ npm test
 - [x] **44 tests unitarios pasando** (100% success rate)
 - [x] **Test coverage**: 77.24% overall ✅✅✅ (superado objetivo 70%!)
 
-### 🔄 Fase 2: API REST & Database (En progreso - Sprint 2, 50%)
+### ✅ Fase 2: API REST & Database (Completada - Sprint 2, 100%)
 - [x] **Endpoint de Upload** (POST /api/v1/upload)
   - Validación de archivos (extensión .zip, max 500MB)
   - Validación de idiomas soportados
   - Upload a Supabase Storage
   - Creación de Translation Jobs en DB
+  - Protección con autenticación JWT
   - 10 tests unitarios implementados
 - [x] **Endpoint de Status** (GET /api/v1/jobs/{id})
   - Polling optimizado con respuesta ligera
   - Endpoint /details para información completa
   - Descripciones human-readable de estados
   - Manejo de errores (404, 422, 500)
+  - Verificación de ownership por usuario
   - 14 tests unitarios implementados
+- [x] **Endpoints de Download** (GET /api/v1/download/{id}/{lang})
+  - Descarga individual por idioma
+  - Descarga de bundle con todos los idiomas
+  - URLs firmadas con expiración (7 días)
+  - Protección con autenticación y ownership
 - [x] **Services Infrastructure**
   - StorageService: Upload/download/signed URLs (Supabase)
   - JobService: CRUD de Translation Jobs
   - Configuración centralizada (Settings)
   - Modelos Pydantic completos
-- [x] **Database Migration**
+- [x] **Database Setup**
   - Tabla translation_jobs con RLS policies
+  - Tabla translation_cache para reducir costos
   - Índices para performance
-  - Trigger auto-update timestamps
-- [ ] Celery worker para procesamiento asíncrono
-- [ ] Endpoint de download de paquetes traducidos
+  - Triggers auto-update timestamps
+  - Funciones de limpieza automática
+  - Vistas de estadísticas
+- [x] **Celery Worker** para procesamiento asíncrono
+  - Task de traducción completa
+  - Actualización de progreso en tiempo real
+  - Retry logic con exponential backoff
+  - Error handling robusto
+- [x] **Autenticación con Supabase Auth**
+  - Endpoints de signup, login, logout, refresh
+  - Middleware de verificación JWT
+  - Dependencias de FastAPI para autenticación
+  - Gestión de sesiones
 
-### ⏳ Fase 2: Frontend Completo (Próximo)
+### ✅ Fase 3: Frontend Completo (Completada - Sprint 3, 100%)
 - [x] Estructura base de React funcionando
-- [ ] Componente de upload con drag & drop
-- [ ] Selector de idiomas
-- [ ] Progress tracking en tiempo real
-- [ ] Autenticación con Supabase
+- [x] Componente de upload con drag & drop
+- [x] Selector de idiomas con 12 idiomas soportados
+- [x] Progress tracking en tiempo real con polling
+- [x] Autenticación completa (signup, login, logout)
+- [x] Protección de rutas (ProtectedRoute)
+- [x] Botones de descarga por idioma
+- [x] Descarga de bundle completo
+- [x] Manejo de errores 401/403
+- [x] Loading states y feedback visual
+- [x] Diseño responsive con Tailwind CSS
 
-### 🔮 Fase 3: Features Avanzadas
-- [ ] xAPI/TinCan support
-- [ ] Edición manual de traducciones
-- [ ] Webhooks para integraciones
-- [ ] Analytics y reporting
+### ✅ Fase 4: DevOps & Deployment (Completada - 2025-11-27)
+- [x] **Docker Compose** con stack completo
+  - Frontend (React + Vite)
+  - Backend (FastAPI)
+  - Celery Worker
+  - PostgreSQL (local para dev)
+  - Redis (queue para Celery)
+- [x] **Frontend Dockerfile** multi-stage
+  - Development stage con hot-reload
+  - Build stage optimizado
+  - Production stage con nginx
+- [x] **Nginx configuration** para SPA
+  - Routing para React Router
+  - Gzip compression
+  - Security headers
+  - Static asset caching
+
+### 🔮 Fase 5: Features Avanzadas (Próximo)
+- [ ] xAPI/TinCan support completo
+- [ ] Edición manual de traducciones pre/post-procesamiento
+- [ ] Webhooks para integraciones externas
+- [ ] Analytics y reporting de uso
+- [ ] Sistema de caché inteligente (implementado pero sin UI)
+- [ ] Gestión de glossarios personalizados
+- [ ] Soporte para más formatos (H5P, etc.)
 
 Ver backlog completo en [BACKLOG.md](.claude/BACKLOG.md)
 
