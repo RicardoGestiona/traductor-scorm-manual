@@ -9,7 +9,7 @@
 
 ### Current Focus
 **Sprint**: Sprint 2 - API REST & Database
-**Story**: STORY-009 - Endpoint de Status de Job
+**Story**: STORY-010 - Celery Task para Traducción Asíncrona
 **Status**: ✅ Completed
 
 ### Today's Goals (2025-11-27)
@@ -32,9 +32,9 @@
 ### Overall Progress
 - **Sprint 0**: 100% completado
 - **Sprint 1**: 100% completado ✅✅ (4/4 stories core)
-- **Sprint 2**: 50% completado (2/4 stories API)
-- **MVP**: 43% completado (9/21 stories)
-- **Estimated completion**: 2-3 semanas desde hoy
+- **Sprint 2**: 75% completado (3/4 stories API)
+- **MVP**: 48% completado (10/21 stories)
+- **Estimated completion**: 1-2 semanas desde hoy
 
 ---
 
@@ -1204,7 +1204,7 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
 ## 📈 METRICS & KPIs
 
 ### Development Velocity
-- **Stories completadas**: 9/21 (43%)
+- **Stories completadas**: 10/21 (48%)
   - ✅ STORY-001: Setup de Documentación
   - ✅ STORY-002: Setup de Backend FastAPI
   - ✅ STORY-003: Setup de Frontend React
@@ -1213,11 +1213,12 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
   - ✅ STORY-006: Extracción de Contenido Traducible
   - ✅ STORY-007: Integración con Claude API
   - ✅ STORY-008: Reconstrucción de SCORM Traducido
-  - ✅ STORY-009: Endpoint de Status de Job ⭐ NEW
+  - ✅ STORY-009: Endpoint de Status de Job
+  - ✅ STORY-010: Celery Task para Traducción Asíncrona ⭐ NEW
 - **Sprint 0 progress**: 100% ✅
 - **Sprint 1 progress**: 100% ✅ (4/4 core stories)
-- **Sprint 2 progress**: 50% ✅ (2/4 API stories)
-- **Estimated velocity**: 8-9 stories/sprint
+- **Sprint 2 progress**: 75% ✅ (3/4 API stories)
+- **Estimated velocity**: 9-10 stories/sprint
 - **Commits**: 11+
   - Initial setup (34 archivos)
   - STATUSLOG updates (5 commits)
@@ -1236,10 +1237,12 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
   - content_extractor.py: 76.62%
   - scorm_parser.py: 62.30%
   - scorm.py models: 96.25%
-  - upload endpoint: 10 tests implementados
-  - jobs endpoint: 14 tests implementados ⭐ NEW
+  - upload endpoint: 10 tests
+  - jobs endpoint: 14 tests
+  - translation task: 9 tests ⭐ NEW
 - **Target**: 70%+ en services críticos ✅
-- **Tests**: 44/44 passing en Sprint 1 (100%) + 24 tests nuevos en Sprint 2
+- **Tests**: 44/44 passing en Sprint 1 (100%) + 33 tests nuevos en Sprint 2
+- **Total tests**: 77 tests
 - **Linting**: Ruff configured, PEP 8 compliant
 
 ### Documentation

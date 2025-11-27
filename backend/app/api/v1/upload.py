@@ -170,15 +170,25 @@ async def upload_scorm(
 
         logger.info(f"File uploaded successfully to {storage_path}")
 
-        # 6. Actualizar job con storage_path
-        # TODO: Implementar método update_storage_path en job_service
-        # await job_service.update_storage_path(job_response.id, storage_path)
+        # 6. Disparar Celery task para procesamiento asíncrono
+        from app.tasks.translation_tasks import translate_scorm_task
+
+        logger.info(f"Dispatching translation task for job {job_response.id}")
+
+        translate_scorm_task.delay(
+            job_id=str(job_response.id),
+            storage_path=storage_path,
+            source_language=job_data.source_language,
+            target_languages=job_data.target_languages,
+        )
+
+        logger.info(f"Translation task dispatched successfully for job {job_response.id}")
 
         # 7. Retornar respuesta exitosa
         return UploadResponse(
             job_id=job_response.id,
             status=job_response.status,
-            message="SCORM package uploaded successfully. Translation will start shortly.",
+            message="SCORM package uploaded successfully. Translation started in background.",
             original_filename=file.filename,
             created_at=job_response.created_at,
         )
