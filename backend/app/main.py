@@ -10,7 +10,7 @@ Feature alignment: STORY-002 - Setup de Backend FastAPI
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.v1 import upload, jobs, download
+from app.api.v1 import upload, jobs, download, auth
 from app.core.config import settings
 
 app = FastAPI(
@@ -59,6 +59,7 @@ async def health_check():
 
 
 # Register API routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
 app.include_router(upload.router, prefix="/api/v1", tags=["upload"])
 app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])
 app.include_router(download.router, prefix="/api/v1", tags=["download"])

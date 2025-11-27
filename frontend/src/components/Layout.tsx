@@ -1,17 +1,27 @@
 /**
- * Layout principal de la aplicación.
+ * Layout principal de la aplicación con autenticación.
  *
  * Filepath: frontend/src/components/Layout.tsx
- * Feature alignment: STORY-003 - Setup Frontend React
+ * Feature alignment: STORY-003 - Setup Frontend React, STORY-017 - Autenticación
  */
 
 import { ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
   children: ReactNode;
 }
 
 export function Layout({ children }: LayoutProps) {
+  const { user, signOut, loading } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Navbar */}
@@ -19,9 +29,11 @@ export function Layout({ children }: LayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center">
-              <h1 className="text-xl font-bold text-gray-900">
-                🌍 Traductor SCORM
-              </h1>
+              <Link to="/">
+                <h1 className="text-xl font-bold text-gray-900 hover:text-gray-700">
+                  🌍 Traductor SCORM
+                </h1>
+              </Link>
             </div>
             <div className="flex items-center space-x-4">
               <a
@@ -40,6 +52,39 @@ export function Layout({ children }: LayoutProps) {
               >
                 GitHub
               </a>
+
+              {!loading && (
+                <>
+                  {user ? (
+                    <div className="flex items-center space-x-4">
+                      <span className="text-sm text-gray-700">
+                        {user.email}
+                      </span>
+                      <button
+                        onClick={handleSignOut}
+                        className="text-sm px-4 py-2 rounded-md bg-gray-200 hover:bg-gray-300 text-gray-800"
+                      >
+                        Cerrar Sesión
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2">
+                      <Link
+                        to="/login"
+                        className="text-sm px-4 py-2 rounded-md hover:bg-gray-100 text-gray-700"
+                      >
+                        Iniciar Sesión
+                      </Link>
+                      <Link
+                        to="/signup"
+                        className="text-sm px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white"
+                      >
+                        Registrarse
+                      </Link>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
