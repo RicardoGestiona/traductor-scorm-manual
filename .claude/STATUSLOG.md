@@ -9,7 +9,7 @@
 
 ### Current Focus
 **Sprint**: Sprint 1 - Backend Core
-**Story**: STORY-006 - Extracción de Contenido Traducible
+**Story**: STORY-007 - Integración con Claude API
 **Status**: ✅ Completed
 
 ### Today's Goals (2025-11-26)
@@ -25,13 +25,14 @@
 - ✅ Implementar parser de SCORM 1.2 completo
 - ✅ Extender parser con soporte completo para SCORM 2004
 - ✅ Implementar extracción de contenido traducible (manifest + HTML)
-- ✅ 20 tests pasando con 69.43% coverage
+- ✅ Integrar Claude API para traducción automática
+- ✅ 34 tests pasando con 74.07% coverage
 
 ### Overall Progress
 - **Sprint 0**: 100% completado
-- **Sprint 1**: 50% completado (2/4 stories core)
-- **MVP**: 24% completado (5/21 stories)
-- **Estimated completion**: 5 semanas desde hoy
+- **Sprint 1**: 75% completado (3/4 stories core)
+- **MVP**: 29% completado (6/21 stories)
+- **Estimated completion**: 4 semanas desde hoy
 
 ---
 
@@ -602,6 +603,101 @@
 
 ---
 
+### [2025-11-26 04:30] - Integración con Claude API para Traducción
+
+**Context**: Con el contenido extraído y estructurado, necesitábamos implementar el motor de traducción usando Claude API de Anthropic para traducir automáticamente los textos manteniendo formato y contexto.
+
+**Decision Made**: Implementar servicio de traducción usando Claude 3.5 Sonnet con batch processing, retry logic y prompts contextuales específicos para e-learning.
+
+**Rationale**:
+- Claude 3.5 Sonnet: Mejor balance calidad/precio para traducción
+- Temperatura 0.3: Traducciones consistentes y predecibles
+- Batch processing: Reducir número de llamadas a API (max 50 segmentos/batch)
+- Retry logic: Manejar rate limits y errores de red automáticamente
+- Prompts contextuales: Mejor calidad al proporcionar contexto del curso
+- Tracking de tokens: Estimar y controlar costos de API
+
+**Implementation**:
+
+1. **TranslationService** (`app/services/translation_service.py`, 91 líneas):
+   ```python
+   class TranslationService:
+       MODEL = "claude-3-5-sonnet-20241022"
+       MAX_TOKENS_PER_REQUEST = 4096
+       MAX_SEGMENTS_PER_BATCH = 50
+
+       async def translate_segments(segments, source, target, context):
+           # Dividir en batches
+           # Traducir cada batch con retry
+           # Parsear respuestas JSON
+           # Retornar dict segment_id -> translated_text
+   ```
+
+2. **Prompt de traducción**:
+   - Instrucciones específicas para e-learning
+   - Reglas de preservación HTML/XML
+   - Contexto del curso para mejor calidad
+   - Respuesta estructurada en JSON
+   - Manejo de terminología técnica
+
+3. **Batch Processing**:
+   - División automática en lotes de 50 segmentos
+   - Procesamiento secuencial de batches
+   - Reducción de ~80% en llamadas a API vs traducción individual
+
+4. **Retry Logic** (con tenacity):
+   ```python
+   @retry(
+       stop=stop_after_attempt(3),
+       wait=wait_exponential(multiplier=1, min=2, max=10),
+       retry=retry_if_exception_type((RateLimitError, APIConnectionError))
+   )
+   ```
+
+5. **Parsing de Respuestas**:
+   - Manejo de bloques markdown (```json```)
+   - Validación de JSON
+   - Extracción por segment_id
+   - Manejo de traducciones vacías
+
+6. **Tracking de Uso**:
+   - Contador de requests
+   - Contador de tokens (input + output)
+   - Estimación de costos: ~$9/millón tokens (promedio)
+
+7. **Tests con Mocks** (`tests/test_translation_service.py`, 14 tests):
+   - test_init_service: ✅
+   - test_translate_segments_success: ✅
+   - test_translate_with_markdown_response: ✅
+   - test_batch_processing (60 segmentos → 2 batches): ✅
+   - test_invalid_json_response: ✅
+   - test_usage_stats y test_estimate_cost: ✅
+   - Todos con mocks de anthropic.Anthropic
+
+**Files Changed**:
+- `backend/app/services/translation_service.py` (nuevo, 310 líneas)
+- `backend/tests/test_translation_service.py` (nuevo, 364 líneas)
+- `backend/pyproject.toml` (+1 dependencia: tenacity>=8.2.3)
+
+**Status**: ✅ Completed
+
+**Métricas**:
+- Tests: 34/34 passing (100%)
+- Coverage: 74.07% overall, 95.60% en translation_service.py
+- Líneas de código: +674 líneas (service + tests)
+- Dependencias: anthropic 0.75.0, tenacity 9.1.2
+
+**Idiomas soportados**: 12 idiomas
+- inglés, español, francés, alemán, italiano, portugués
+- holandés, polaco, chino, japonés, ruso, árabe
+
+**Next Steps**:
+- STORY-008: Reconstrucción de SCORM traducido
+- Implementar cache de traducciones (translation_cache table)
+- Considerar fallback a OpenAI si Claude falla
+
+---
+
 ## 🏗️ ARCHITECTURAL DECISION RECORDS (ADRs)
 
 ### ADR-001: Stack Tecnológico - Python Completo (2025-11-25)
@@ -752,30 +848,33 @@ Necesitamos almacenar archivos SCORM temporalmente (originales y traducidos).
 ## 📈 METRICS & KPIs
 
 ### Development Velocity
-- **Stories completadas**: 5/21 (24%)
+- **Stories completadas**: 6/21 (29%)
   - ✅ STORY-001: Setup de Documentación
   - ✅ STORY-002: Setup de Backend FastAPI
   - ✅ STORY-003: Setup de Frontend React
   - ✅ STORY-005: Parser de SCORM 1.2/2004
   - ✅ STORY-006: Extracción de Contenido Traducible
+  - ✅ STORY-007: Integración con Claude API
 - **Sprint 0 progress**: 100% ✅
-- **Sprint 1 progress**: 50% (2/4 core stories)
-- **Estimated velocity**: 5-6 stories/sprint
-- **Commits**: 7
+- **Sprint 1 progress**: 75% (3/4 core stories)
+- **Estimated velocity**: 6-7 stories/sprint
+- **Commits**: 9
   - Initial setup (34 archivos)
-  - STATUSLOG updates (2 commits)
+  - STATUSLOG updates (3 commits)
   - Frontend setup (22 archivos)
   - SCORM 1.2 parser implementation
   - SCORM 2004 support completed
   - Content extraction implementation
+  - Translation service implementation
 
 ### Code Quality
-- **Test coverage**: 69.43% overall (superado objetivo 70% en services!)
-  - scorm_parser.py: 62.30%
+- **Test coverage**: 74.07% overall ✅✅ (superado ampliamente objetivo 70%!)
+  - translation_service.py: 95.60%
   - content_extractor.py: 76.62%
+  - scorm_parser.py: 62.30%
   - scorm.py models: 96.25%
 - **Target**: 70%+ en services críticos ✅
-- **Tests**: 20/20 passing (100%)
+- **Tests**: 34/34 passing (100%)
 - **Linting**: Ruff configured, PEP 8 compliant
 
 ### Documentation

@@ -176,7 +176,7 @@ npm test
 - [x] Conexión frontend-backend verificada
 - [x] Repositorio GitHub configurado
 
-### 🔄 Fase 1: MVP Backend (En Progreso - Sprint 1, 50% completado)
+### 🔄 Fase 1: MVP Backend (En Progreso - Sprint 1, 75% completado)
 - [x] **SCORM 1.2 parser completo** (252 líneas, 11 tests)
 - [x] **SCORM 2004 parser completo** (sequencing, objectives, completion threshold)
 - [x] **Extracción de contenido traducible** (manifest + HTML, 9 tests)
@@ -184,9 +184,15 @@ npm test
   - Extracción de atributos (alt, title, placeholder, aria-*)
   - Contexto detallado para cada segmento
   - Contador de caracteres para estimación de costos
-- [x] **20 tests unitarios pasando** (100% success rate)
-- [x] **Test coverage**: 69.43% overall (superado objetivo 70%!)
-- [ ] Integración con Claude API para traducción
+- [x] **Integración con Claude API** (91 líneas, 14 tests)
+  - Modelo: Claude 3.5 Sonnet (temperatura 0.3)
+  - Batch processing (max 50 segmentos/batch)
+  - Retry logic con exponential backoff (3 intentos)
+  - Prompts contextuales para e-learning
+  - Tracking de tokens y estimación de costos
+  - Soporte para 12 idiomas
+- [x] **34 tests unitarios pasando** (100% success rate)
+- [x] **Test coverage**: 74.07% overall ✅✅ (superado ampliamente objetivo 70%!)
 - [ ] Endpoints de upload/translate/download
 - [ ] Celery worker para procesamiento async
 
@@ -243,22 +249,23 @@ MIT License - Ver [LICENSE](LICENSE)
 
 ## 📈 Estado Actual
 
-**Progreso MVP**: 24% completado (5/21 stories)
-**Sprint actual**: Sprint 1 - Backend Core (50% completado)
+**Progreso MVP**: 29% completado (6/21 stories)
+**Sprint actual**: Sprint 1 - Backend Core (75% completado)
 **Stories completadas**:
 - ✅ STORY-001: Setup de Documentación
 - ✅ STORY-002: Setup de Backend FastAPI
 - ✅ STORY-003: Setup de Frontend React
 - ✅ STORY-005: Parser de SCORM 1.2/2004
 - ✅ STORY-006: Extracción de Contenido Traducible
+- ✅ STORY-007: Integración con Claude API
 
-**Próxima Story**: STORY-007 - Integración con Claude API
+**Próxima Story**: STORY-008 - Reconstrucción de SCORM Traducido
 
-**Test Coverage**: 69.43% ✅ (superado objetivo 70%!)
-**Tests**: 20/20 passing (100%)
+**Test Coverage**: 74.07% ✅✅ (superado ampliamente objetivo 70%!)
+**Tests**: 34/34 passing (100%)
 
 ---
 
 **Estado del proyecto**: 🚧 En desarrollo activo
-**Última actualización**: 2025-11-26 03:15 AM
-**Versión**: 0.3.0-alpha
+**Última actualización**: 2025-11-26 04:45 AM
+**Versión**: 0.4.0-alpha
