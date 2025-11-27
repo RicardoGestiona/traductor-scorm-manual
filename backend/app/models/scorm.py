@@ -2,12 +2,13 @@
 Modelos Pydantic para representar estructuras SCORM.
 
 Filepath: backend/app/models/scorm.py
-Feature alignment: STORY-005 - Parser de SCORM 1.2
+Feature alignment: STORY-005 - Parser de SCORM 1.2, STORY-006 - Extracción de Contenido
 """
 
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field
 from datetime import datetime
+from enum import Enum
 
 
 class ScormMetadata(BaseModel):
@@ -122,6 +123,85 @@ class ScormValidationResult(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     manifest_found: bool = False
     resources_found: int = 0
+
+
+# ==========================================
+# Modelos para Contenido Traducible
+# STORY-006: Extracción de Contenido Traducible
+# ==========================================
+
+
+class ContentType(str, Enum):
+    """Tipo de contenido a traducir."""
+
+    XML = "xml"  # Contenido de imsmanifest.xml
+    HTML = "html"  # Contenido de archivos HTML
+    TEXT = "text"  # Texto plano
+    ATTRIBUTE = "attribute"  # Atributo HTML (alt, title, etc)
+
+
+class TranslatableSegment(BaseModel):
+    """
+    Segmento individual de texto traducible.
+
+    Representa un texto extraído de un archivo SCORM que debe traducirse,
+    manteniendo información de contexto para mejor calidad de traducción.
+    """
+
+    segment_id: str  # ID único (ej: "manifest_title", "item_001_title", "html_p_5")
+    content_type: ContentType
+    original_text: str
+    context: str  # Contexto: dónde aparece (ej: "Organization Title", "Paragraph in lesson1.html")
+    xpath: Optional[str] = None  # XPath/selector para XML/HTML (para aplicar traducción después)
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Metadata adicional
+
+    # Para atributos HTML
+    element_tag: Optional[str] = None  # ej: "img", "input"
+    attribute_name: Optional[str] = None  # ej: "alt", "title", "placeholder"
+
+
+class TranslatableContent(BaseModel):
+    """
+    Contenedor de todos los segmentos traducibles de un archivo.
+
+    Agrupa todos los textos extraídos de un archivo (manifest.xml, lesson.html, etc)
+    con información para poder aplicar las traducciones después.
+    """
+
+    file_path: str  # Path relativo dentro del SCORM (ej: "imsmanifest.xml", "content/lesson1.html")
+    content_type: ContentType
+    segments: List[TranslatableSegment] = Field(default_factory=list)
+    total_characters: int = 0  # Total de caracteres a traducir (para estimación de costo)
+    language_detected: Optional[str] = None  # Idioma detectado del contenido
+
+    def add_segment(self, segment: TranslatableSegment) -> None:
+        """Añadir un segmento y actualizar contador de caracteres."""
+        self.segments.append(segment)
+        self.total_characters += len(segment.original_text)
+
+    def get_all_texts(self) -> List[str]:
+        """Obtener lista de todos los textos a traducir."""
+        return [seg.original_text for seg in self.segments]
+
+
+class ExtractionResult(BaseModel):
+    """
+    Resultado de la extracción de contenido traducible de un paquete SCORM.
+
+    Contiene todos los archivos procesados con sus segmentos traducibles.
+    """
+
+    scorm_package: str  # Filename del paquete
+    files_processed: List[TranslatableContent] = Field(default_factory=list)
+    total_segments: int = 0
+    total_characters: int = 0
+    extraction_date: datetime = Field(default_factory=datetime.utcnow)
+
+    def add_file_content(self, content: TranslatableContent) -> None:
+        """Añadir contenido de un archivo y actualizar contadores."""
+        self.files_processed.append(content)
+        self.total_segments += len(content.segments)
+        self.total_characters += content.total_characters
 
 
 # Necesario para referencias circulares (Item.children)
