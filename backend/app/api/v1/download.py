@@ -11,9 +11,10 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, status, Query
+from fastapi import APIRouter, HTTPException, status, Query, Depends
 from fastapi.responses import FileResponse, RedirectResponse
 
+from app.core.auth import get_current_user, User
 from app.services.job_service import job_service
 from app.services.storage import storage_service
 from app.models.translation import TranslationStatus, ErrorResponse
@@ -28,6 +29,8 @@ router = APIRouter()
     response_class=RedirectResponse,
     responses={
         307: {"description": "Redirect to signed download URL"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden - Job belongs to another user"},
         404: {"model": ErrorResponse, "description": "Job or language not found"},
         409: {"model": ErrorResponse, "description": "Translation not completed yet"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
@@ -36,6 +39,7 @@ router = APIRouter()
 async def download_translated_scorm(
     job_id: UUID,
     language: str,
+    user: User = Depends(get_current_user),
 ):
     """
     Download a translated SCORM package for a specific language.
@@ -65,7 +69,7 @@ async def download_translated_scorm(
     - Auto-deletion of files after 7 days (Supabase lifecycle policy)
     """
     try:
-        logger.info(f"Download request for job {job_id}, language {language}")
+        logger.info(f"Download request for job {job_id}, language {language} (user: {user.email})")
 
         # 1. Obtener job de la base de datos
         job = await job_service.get_job(job_id)
@@ -80,7 +84,18 @@ async def download_translated_scorm(
                 },
             )
 
-        # 2. Verificar que el job esté completado
+        # 2. Verificar que el job pertenece al usuario autenticado
+        if job.user_id and str(job.user_id) != user.id:
+            logger.warning(f"User {user.email} attempted to download job {job_id} owned by {job.user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "details": "You don't have permission to download this translation",
+                },
+            )
+
+        # 3. Verificar que el job esté completado
         if job.status != TranslationStatus.COMPLETED:
             logger.warning(
                 f"Job {job_id} not completed yet (status: {job.status.value})"

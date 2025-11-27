@@ -9,10 +9,11 @@ import logging
 from io import BytesIO
 from pathlib import Path
 from typing import List
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Depends
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.auth import get_current_user, User
 from app.models.translation import (
     UploadResponse,
     TranslationJobCreate,
@@ -57,6 +58,7 @@ def validate_file_size(file: UploadFile) -> tuple[bool, float]:
     status_code=status.HTTP_201_CREATED,
     responses={
         400: {"model": ErrorResponse, "description": "Validation error"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
         413: {"model": ErrorResponse, "description": "File too large"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
@@ -69,9 +71,12 @@ async def upload_scorm(
     target_languages: str = Form(
         ..., description="Comma-separated target language codes (e.g., 'es,fr,de')"
     ),
+    user: User = Depends(get_current_user),
 ):
     """
     Upload a SCORM package for translation.
+
+    **Authentication:** Required (Bearer token)
 
     **Validations:**
     - File must be a .zip file
@@ -83,10 +88,12 @@ async def upload_scorm(
     - status: Current status (initially 'uploaded')
     - original_filename: Name of the uploaded file
     - created_at: Timestamp of upload
+    - user_id: ID of the authenticated user who uploaded the file
 
     **Example:**
     ```bash
     curl -X POST "http://localhost:8000/api/v1/upload" \\
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \\
       -F "file=@curso.zip" \\
       -F "source_language=es" \\
       -F "target_languages=en,fr"
@@ -123,6 +130,7 @@ async def upload_scorm(
             original_filename=file.filename,
             source_language=source_language,
             target_languages=target_langs_list,
+            user_id=user.id,  # Asociar job con usuario autenticado
         )
     except ValueError as e:
         validation_errors.append(

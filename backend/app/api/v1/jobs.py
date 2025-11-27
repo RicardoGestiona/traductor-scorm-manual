@@ -7,9 +7,10 @@ Feature alignment: STORY-009 - Endpoint de Status de Job
 
 import logging
 from uuid import UUID
-from fastapi import APIRouter, HTTPException, status, Path
+from fastapi import APIRouter, HTTPException, status, Path, Depends
 from typing import Optional
 
+from app.core.auth import get_current_user, User
 from app.models.translation import (
     TranslationJobResponse,
     JobStatusResponse,
@@ -26,12 +27,15 @@ router = APIRouter()
     "/jobs/{job_id}",
     response_model=JobStatusResponse,
     responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden - Job belongs to another user"},
         404: {"model": ErrorResponse, "description": "Job not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def get_job_status(
     job_id: UUID = Path(..., description="Unique identifier of the translation job"),
+    user: User = Depends(get_current_user),
 ):
     """
     Get the status of a translation job.
@@ -94,7 +98,7 @@ async def get_job_status(
     ```
     """
     try:
-        logger.info(f"Fetching status for job {job_id}")
+        logger.info(f"Fetching status for job {job_id} (user: {user.email})")
 
         # Obtener job desde la base de datos
         job = await job_service.get_job(job_id)
@@ -106,6 +110,17 @@ async def get_job_status(
                 detail={
                     "error": "Job not found",
                     "details": f"No translation job found with ID: {job_id}",
+                },
+            )
+
+        # Verificar que el job pertenece al usuario autenticado
+        if job.user_id and str(job.user_id) != user.id:
+            logger.warning(f"User {user.email} attempted to access job {job_id} owned by {job.user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "details": "You don't have permission to access this translation job",
                 },
             )
 
