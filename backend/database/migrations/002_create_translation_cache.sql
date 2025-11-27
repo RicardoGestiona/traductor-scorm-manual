@@ -46,10 +46,11 @@ CREATE INDEX IF NOT EXISTS idx_translation_cache_created_at
 CREATE INDEX IF NOT EXISTS idx_translation_cache_last_used
     ON translation_cache(last_used_at DESC);
 
--- Índice para limpiar cache antiguo
+-- Índice para limpiar cache antiguo (sin predicado - NOW() no es IMMUTABLE)
+-- El WHERE clause con NOW() causaba error: "functions in index predicate must be marked IMMUTABLE"
+-- Solución: índice simple sobre last_used_at, el filtro se hace en la query
 CREATE INDEX IF NOT EXISTS idx_translation_cache_old_entries
-    ON translation_cache(last_used_at)
-    WHERE last_used_at < NOW() - INTERVAL '90 days';
+    ON translation_cache(last_used_at);
 
 -- Trigger para actualizar last_used_at cuando se usa una traducción del cache
 CREATE OR REPLACE FUNCTION update_cache_last_used()
