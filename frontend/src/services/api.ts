@@ -2,8 +2,10 @@
  * API client service para conectar con el backend FastAPI.
  *
  * Filepath: frontend/src/services/api.ts
- * Feature alignment: STORY-003 - Setup Frontend React
+ * Feature alignment: STORY-003 - Setup Frontend React, STORY-017 - Autenticación
  */
+
+import { supabase } from '../contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
@@ -12,6 +14,21 @@ class ApiClient {
 
   constructor(baseURL: string) {
     this.baseURL = baseURL;
+  }
+
+  /**
+   * Get authorization headers with JWT token
+   */
+  private async getAuthHeaders(): Promise<HeadersInit> {
+    const { data: { session } } = await supabase.auth.getSession();
+
+    if (session?.access_token) {
+      return {
+        'Authorization': `Bearer ${session.access_token}`,
+      };
+    }
+
+    return {};
   }
 
   /**
@@ -43,6 +60,7 @@ class ApiClient {
 
   /**
    * Upload SCORM package para traducción
+   * @requires Authentication
    */
   async uploadScorm(
     file: File,
@@ -60,8 +78,11 @@ class ApiClient {
     formData.append('source_language', sourceLang);
     formData.append('target_languages', targetLangs.join(','));
 
+    const authHeaders = await this.getAuthHeaders();
+
     const response = await fetch(`${this.baseURL}/api/v1/upload`, {
       method: 'POST',
+      headers: authHeaders,
       body: formData,
     });
 
@@ -75,6 +96,7 @@ class ApiClient {
 
   /**
    * Obtener status de un job de traducción (para polling)
+   * @requires Authentication
    */
   async getJobStatus(jobId: string): Promise<{
     job_id: string;
@@ -85,7 +107,11 @@ class ApiClient {
     error_message?: string;
     estimated_completion?: string;
   }> {
-    const response = await fetch(`${this.baseURL}/api/v1/jobs/${jobId}`);
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/api/v1/jobs/${jobId}`, {
+      headers: authHeaders,
+    });
 
     if (!response.ok) {
       const error = await response.json();
@@ -97,6 +123,7 @@ class ApiClient {
 
   /**
    * Obtener detalles completos de un job
+   * @requires Authentication
    */
   async getJobDetails(jobId: string): Promise<{
     id: string;
@@ -112,7 +139,11 @@ class ApiClient {
     download_urls: Record<string, string>;
     error_message?: string;
   }> {
-    const response = await fetch(`${this.baseURL}/api/v1/jobs/${jobId}/details`);
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/api/v1/jobs/${jobId}/details`, {
+      headers: authHeaders,
+    });
 
     if (!response.ok) {
       const error = await response.json();
@@ -123,17 +154,61 @@ class ApiClient {
   }
 
   /**
-   * Obtener URL de descarga para un idioma específico
+   * Descargar paquete traducido para un idioma específico
+   * @requires Authentication
+   * @returns URL de descarga firmada (redirect)
    */
-  getDownloadUrl(jobId: string, language: string): string {
-    return `${this.baseURL}/api/v1/download/${jobId}/${language}`;
+  async downloadTranslatedPackage(jobId: string, language: string): Promise<void> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/api/v1/download/${jobId}/${language}`, {
+      headers: authHeaders,
+      redirect: 'follow',
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail?.error || 'Error al descargar archivo');
+    }
+
+    // Trigger download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `scorm_${language}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   }
 
   /**
-   * Obtener URL de descarga de todos los idiomas (bundle)
+   * Descargar todos los paquetes traducidos (bundle)
+   * @requires Authentication
    */
-  getDownloadAllUrl(jobId: string): string {
-    return `${this.baseURL}/api/v1/download/${jobId}/all`;
+  async downloadAllPackages(jobId: string): Promise<void> {
+    const authHeaders = await this.getAuthHeaders();
+
+    const response = await fetch(`${this.baseURL}/api/v1/download/${jobId}/all`, {
+      headers: authHeaders,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail?.error || 'Error al descargar archivos');
+    }
+
+    // Trigger download
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `scorm_translations.zip`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
   }
 }
 
