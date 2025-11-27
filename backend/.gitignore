@@ -70,3 +70,10 @@ tmp/
 *.zip
 uploads/
 downloads/
+
+# general
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
