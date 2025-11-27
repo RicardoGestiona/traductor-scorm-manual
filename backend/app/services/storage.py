@@ -93,6 +93,32 @@ class StorageService:
             logger.error(f"Failed to generate signed URL for {file_path}: {e}")
             return None
 
+    async def download_file(self, file_path: str) -> Optional[bytes]:
+        """
+        Descargar archivo desde storage.
+
+        Args:
+            file_path: Path del archivo en storage
+
+        Returns:
+            Contenido del archivo en bytes o None si falla
+        """
+        try:
+            logger.info(f"Downloading file from storage: {file_path}")
+
+            response = self.client.storage.from_(self.bucket).download(file_path)
+
+            if response:
+                logger.info(f"File downloaded successfully: {file_path}")
+                return response
+
+            logger.warning(f"No content returned for {file_path}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Failed to download file {file_path}: {e}")
+            return None
+
     async def delete_file(self, file_path: str) -> bool:
         """
         Eliminar archivo de storage.
