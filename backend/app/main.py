@@ -10,9 +10,8 @@ Feature alignment: STORY-002 - Setup de Backend FastAPI
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
-# TODO-FASE-1: Import routers when implemented
-# from app.api.v1 import translation, scorm, languages
+from app.api.v1 import upload, jobs
+from app.core.config import settings
 
 app = FastAPI(
     title="Traductor SCORM API",
@@ -22,10 +21,10 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS middleware - Configure for production later
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO-FASE-1: Restrict to frontend domain in production
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,10 +58,9 @@ async def health_check():
     }
 
 
-# TODO-FASE-1: Register API routers
-# app.include_router(translation.router, prefix="/api/v1", tags=["translation"])
-# app.include_router(scorm.router, prefix="/api/v1", tags=["scorm"])
-# app.include_router(languages.router, prefix="/api/v1", tags=["languages"])
+# Register API routers
+app.include_router(upload.router, prefix="/api/v1", tags=["upload"])
+app.include_router(jobs.router, prefix="/api/v1", tags=["jobs"])
 
 
 if __name__ == "__main__":

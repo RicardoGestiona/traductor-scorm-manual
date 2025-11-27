@@ -138,12 +138,19 @@ Ver instrucciones detalladas en:
 
 Documentación interactiva: `http://localhost:8000/docs`
 
-**Endpoints principales**:
+**Endpoints implementados**:
 
 ```http
-POST /api/v1/upload
-GET  /api/v1/jobs/{job_id}
-GET  /api/v1/languages
+POST /api/v1/upload                    # Subir paquete SCORM
+GET  /api/v1/jobs/{job_id}            # Status del job (polling)
+GET  /api/v1/jobs/{job_id}/details    # Detalles completos del job
+GET  /health                           # Health check
+```
+
+**Próximos endpoints**:
+```http
+GET  /api/v1/languages                # Idiomas soportados (TODO)
+GET  /api/v1/jobs/{job_id}/download   # Download traducido (TODO)
 ```
 
 Ver ejemplos completos en [backend/README.md](backend/README.md#-api-endpoints)
@@ -176,7 +183,7 @@ npm test
 - [x] Conexión frontend-backend verificada
 - [x] Repositorio GitHub configurado
 
-### ✅ Fase 1: MVP Backend (Completada - Sprint 1, 100% completado)
+### ✅ Fase 1: MVP Backend Core (Completada - Sprint 1, 100%)
 - [x] **SCORM 1.2 parser completo** (252 líneas, 11 tests)
 - [x] **SCORM 2004 parser completo** (sequencing, objectives, completion threshold)
 - [x] **Extracción de contenido traducible** (manifest + HTML, 9 tests)
@@ -198,9 +205,32 @@ npm test
   - Generación de ZIP del paquete traducido
   - Manejo de traducciones parciales y vacías
 - [x] **44 tests unitarios pasando** (100% success rate)
-- [x] **Test coverage**: 77.24% overall ✅✅✅ (superado ampliamente objetivo 70%!)
-- [ ] Endpoints de upload/translate/download
-- [ ] Celery worker para procesamiento async
+- [x] **Test coverage**: 77.24% overall ✅✅✅ (superado objetivo 70%!)
+
+### 🔄 Fase 2: API REST & Database (En progreso - Sprint 2, 50%)
+- [x] **Endpoint de Upload** (POST /api/v1/upload)
+  - Validación de archivos (extensión .zip, max 500MB)
+  - Validación de idiomas soportados
+  - Upload a Supabase Storage
+  - Creación de Translation Jobs en DB
+  - 10 tests unitarios implementados
+- [x] **Endpoint de Status** (GET /api/v1/jobs/{id})
+  - Polling optimizado con respuesta ligera
+  - Endpoint /details para información completa
+  - Descripciones human-readable de estados
+  - Manejo de errores (404, 422, 500)
+  - 14 tests unitarios implementados
+- [x] **Services Infrastructure**
+  - StorageService: Upload/download/signed URLs (Supabase)
+  - JobService: CRUD de Translation Jobs
+  - Configuración centralizada (Settings)
+  - Modelos Pydantic completos
+- [x] **Database Migration**
+  - Tabla translation_jobs con RLS policies
+  - Índices para performance
+  - Trigger auto-update timestamps
+- [ ] Celery worker para procesamiento asíncrono
+- [ ] Endpoint de download de paquetes traducidos
 
 ### ⏳ Fase 2: Frontend Completo (Próximo)
 - [x] Estructura base de React funcionando
@@ -255,24 +285,40 @@ MIT License - Ver [LICENSE](LICENSE)
 
 ## 📈 Estado Actual
 
-**Progreso MVP**: 33% completado (7/21 stories)
-**Sprint actual**: Sprint 1 - Backend Core (100% COMPLETADO ✅✅)
-**Stories completadas**:
+**Progreso MVP**: 43% completado (9/21 stories)
+
+**Sprint 0**: ✅ 100% completado (Foundation)
+**Sprint 1**: ✅ 100% completado (Backend Core - 4/4 stories)
+**Sprint 2**: 🔄 50% completado (API REST - 2/4 stories)
+
+**Stories completadas** (9 total):
 - ✅ STORY-001: Setup de Documentación
 - ✅ STORY-002: Setup de Backend FastAPI
 - ✅ STORY-003: Setup de Frontend React
+- ✅ STORY-004: Endpoint de Upload de SCORM ⭐ NEW
 - ✅ STORY-005: Parser de SCORM 1.2/2004
 - ✅ STORY-006: Extracción de Contenido Traducible
 - ✅ STORY-007: Integración con Claude API
 - ✅ STORY-008: Reconstrucción de SCORM Traducido
+- ✅ STORY-009: Endpoint de Status de Job ⭐ NEW
 
-**Próxima Story**: STORY-004 - Endpoints API REST o STORY-009 - Worker Celery
+**Próximas Stories**:
+1. STORY-010: Celery Task para procesamiento asíncrono (HIGH)
+2. STORY-016: Database Schema Setup (ejecutar migration)
+3. STORY-011: Frontend Upload Component
 
-**Test Coverage**: 77.24% ✅✅✅ (superado ampliamente objetivo 70%!)
-**Tests**: 44/44 passing (100%)
+**Test Coverage**:
+- Sprint 1: 77.24% ✅✅✅ (superado objetivo 70%!)
+- Sprint 2: 24 tests adicionales implementados
+- **Total**: 68 tests (44 Sprint 1 + 24 Sprint 2)
+
+**Métricas del Proyecto**:
+- Líneas de código: ~3,500+ (backend core + API)
+- Archivos creados: 30+
+- Coverage objetivo: 70%+ (✅ alcanzado)
 
 ---
 
 **Estado del proyecto**: 🚧 En desarrollo activo
-**Última actualización**: 2025-11-27 05:20 AM
-**Versión**: 0.5.0-alpha
+**Última actualización**: 2025-11-27 12:00 PM
+**Versión**: 0.6.0-alpha
