@@ -32,6 +32,35 @@ class ApiClient {
   }
 
   /**
+   * Handle API errors and throw appropriate messages
+   */
+  private async handleResponse(response: Response): Promise<any> {
+    if (response.ok) {
+      return response.json();
+    }
+
+    // Handle authentication errors
+    if (response.status === 401) {
+      // Clear session and redirect to login
+      await supabase.auth.signOut();
+      window.location.href = '/login';
+      throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+    }
+
+    if (response.status === 403) {
+      throw new Error('No tienes permiso para acceder a este recurso.');
+    }
+
+    // Try to get error message from response
+    try {
+      const error = await response.json();
+      throw new Error(error.detail?.error || error.detail || 'Error en la solicitud');
+    } catch {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+  }
+
+  /**
    * Health check del backend
    */
   async healthCheck(): Promise<{ status: string; service: string }> {
@@ -86,12 +115,7 @@ class ApiClient {
       body: formData,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail?.error || 'Error al subir archivo');
-    }
-
-    return response.json();
+    return this.handleResponse(response);
   }
 
   /**
@@ -113,12 +137,7 @@ class ApiClient {
       headers: authHeaders,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail?.error || 'Error al obtener status');
-    }
-
-    return response.json();
+    return this.handleResponse(response);
   }
 
   /**
@@ -145,12 +164,7 @@ class ApiClient {
       headers: authHeaders,
     });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail?.error || 'Error al obtener detalles');
-    }
-
-    return response.json();
+    return this.handleResponse(response);
   }
 
   /**
@@ -166,9 +180,10 @@ class ApiClient {
       redirect: 'follow',
     });
 
+    // Check for errors before processing blob
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail?.error || 'Error al descargar archivo');
+      await this.handleResponse(response); // This will throw
+      return;
     }
 
     // Trigger download
@@ -194,9 +209,10 @@ class ApiClient {
       headers: authHeaders,
     });
 
+    // Check for errors before processing blob
     if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail?.error || 'Error al descargar archivos');
+      await this.handleResponse(response); // This will throw
+      return;
     }
 
     // Trigger download
