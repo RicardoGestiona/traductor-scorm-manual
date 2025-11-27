@@ -76,20 +76,24 @@ services:
     command: celery -A app.core.celery_app worker --loglevel=info
 
   # Frontend (React + Vite)
-  # TODO-FASE-1: Descomentar cuando se cree el frontend
-  # frontend:
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   container_name: traductor-scorm-frontend
-  #   ports:
-  #     - "5173:5173"
-  #   volumes:
-  #     - ./frontend:/app
-  #     - /app/node_modules
-  #   depends_on:
-  #     - backend
-  #   command: npm run dev -- --host
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: traductor-scorm-frontend
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: npm run dev -- --host 0.0.0.0
 
 volumes:
   postgres_data:
