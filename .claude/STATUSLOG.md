@@ -8,8 +8,8 @@
 ## 📍 CURRENT STATUS
 
 ### Current Focus
-**Sprint**: Sprint 3 - Frontend Development
-**Story**: Frontend Integration Complete (STORY-012, STORY-013, STORY-014)
+**Sprint**: Sprint 4 - Database & Infrastructure
+**Story**: STORY-015 & STORY-016 - Database Schema & Supabase Setup
 **Status**: ✅ Completed
 
 ### Today's Goals (2025-11-27)
@@ -34,8 +34,9 @@
 - **Sprint 1**: 100% completado ✅✅ (4/4 stories - Backend Core)
 - **Sprint 2**: 100% completado ✅✅✅✅ (4/4 stories - Backend API)
 - **Sprint 3**: 100% completado ✅✅✅✅ (4/4 stories - Frontend)
-- **MVP**: 71% completado (15/21 stories)
-- **Estimated completion**: MVP funcional LISTO - faltan features secundarias
+- **Sprint 4**: 100% completado ✅✅ (2/2 stories - Database & Supabase)
+- **MVP**: 81% completado (17/21 stories)
+- **Estimated completion**: MVP funcional LISTO - faltan features secundarias (auth, testing)
 
 ---
 
@@ -57,6 +58,138 @@
 ---
 
 ## 📝 ACTIVITY LOG
+
+### [2025-11-27 19:15] - STORY-015 & STORY-016: Database Schema & Supabase Configuration
+
+**Context**: Con el backend y frontend implementados, necesitábamos configurar la base de datos PostgreSQL en Supabase para persistir translation jobs, implementar cache de traducciones, y almacenar archivos SCORM.
+
+**Decision Made**: Usar Supabase como BaaS (Backend-as-a-Service) para PostgreSQL, Storage y Auth, con schema SQL versionado mediante migraciones y Row Level Security (RLS) para multi-tenancy.
+
+**Rationale**:
+- Supabase provee PostgreSQL managed + Storage + Auth en un solo servicio
+- RLS policies permiten aislamiento de datos por usuario sin lógica en backend
+- Migraciones SQL versionadas aseguran reproducibilidad del schema
+- Cache de traducciones reduce costos de API y mejora performance
+- Free tier es suficiente para MVP (500MB DB + 1GB Storage)
+
+**Implementation**:
+
+**STORY-016: Database Schema Setup**
+
+1. **Migration 001: translation_jobs table** (`backend/database/migrations/001_create_translation_jobs.sql`, ya existía):
+   - Tabla principal para tracking de trabajos de traducción
+   - Campos: id (UUID), original_filename, scorm_version, source_language, target_languages[], status, progress_percentage, created_at, updated_at, completed_at, download_urls (JSONB), error_message, user_id (FK a auth.users)
+   - RLS policies: usuarios solo ven sus propios jobs
+   - Índices: user_id, status, created_at
+   - Trigger: auto-update de updated_at timestamp
+
+2. **Migration 002: translation_cache table** (`backend/database/migrations/002_create_translation_cache.sql`, 124 líneas):
+   - **Propósito**: Cache global de traducciones para reducir costos de API
+   - **Estrategia**: Cache compartida entre usuarios (maximiza reuso)
+   - **Campos clave**:
+     - source_text, source_language, target_language, translated_text
+     - context_hash (MD5): permite invalidación selectiva por curso
+     - char_count: tracking de caracteres cacheados (para analytics de ahorro)
+     - hit_count, last_used_at: métricas de efectividad del cache
+     - translation_model: registro del modelo usado
+   - **Unique constraint**: (source_text, source_language, target_language, context_hash)
+   - **Índices optimizados**:
+     - idx_translation_cache_lookup: búsqueda por (source, source_lang, target_lang)
+     - idx_translation_cache_context: filtrado por contexto
+     - idx_translation_cache_last_used: para cleanup de entradas antiguas
+   - **Función de limpieza**: `clean_old_cache_entries()` - elimina entradas >90 días sin uso
+   - **Vista de estadísticas**: `translation_cache_stats` - agregación por idioma (total entries, hits, chars, age)
+   - **RLS policies**:
+     - SELECT: público (cache compartida)
+     - INSERT/UPDATE: solo service_role (previene manipulación)
+   - **Fix aplicado**: Eliminado predicado `WHERE NOW()` en índice parcial (causaba error IMMUTABLE)
+
+3. **Seed Data** (opcional, solo desarrollo):
+   - `001_sample_jobs.sql`: 6 jobs de ejemplo en varios estados (completed, translating, failed, etc)
+   - `002_sample_cache.sql`: 15 entradas de cache con frases comunes de SCORM
+
+4. **Documentación**: `backend/database/README.md` (243 líneas) con instrucciones completas de uso
+
+**STORY-015: Supabase Configuration**
+
+1. **Documentación de setup**: `.claude/SETUP_SUPABASE.md` (650 líneas)
+   - Guía paso a paso para crear proyecto Supabase
+   - Instrucciones para ejecutar migraciones en SQL Editor
+   - Configuración de Storage buckets (scorm-originals, scorm-translated)
+   - Setup de variables de entorno (backend y frontend)
+   - Troubleshooting de errores comunes
+
+2. **Script de verificación**: `backend/test_supabase_connection.py` (217 líneas)
+   - Test automatizado con 9 validaciones
+   - Verifica: conectividad, CRUD operations, RLS policies, Storage buckets
+   - Output con colores (verde=success, rojo=error, amarillo=info)
+   - Exit code apropiado para CI/CD
+
+3. **Configuración ejecutada**:
+   - Proyecto Supabase creado: `xuezjcfmnghfzvujuhtj.supabase.co`
+   - Migraciones ejecutadas: 001 + 002 (con fix de índice IMMUTABLE)
+   - Storage buckets creados: scorm-originals (privado), scorm-translated (privado)
+   - RLS policies configuradas en buckets
+   - Variables de entorno configuradas en `backend/.env`:
+     - SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+     - DATABASE_URL (PostgreSQL directo)
+   - **Fix aplicado**: Eliminados corchetes `[]` de URLs en .env (causaban error IPv6)
+
+4. **Verificación exitosa**:
+   - ✅ Test script ejecutado: 9/9 tests pasando
+   - ✅ Tablas verificadas: translation_jobs, translation_cache
+   - ✅ Vista verificada: translation_cache_stats
+   - ✅ Función verificada: clean_old_cache_entries()
+   - ✅ Índices verificados: 8 índices creados
+   - ✅ RLS policies verificadas: activas en ambas tablas
+   - ✅ Storage buckets verificados: ambos creados correctamente
+
+**Files Created/Modified**:
+- `backend/database/migrations/002_create_translation_cache.sql` (nuevo)
+- `backend/database/seed/001_sample_jobs.sql` (nuevo)
+- `backend/database/seed/002_sample_cache.sql` (nuevo)
+- `backend/database/README.md` (nuevo)
+- `.claude/SETUP_SUPABASE.md` (nuevo)
+- `backend/test_supabase_connection.py` (nuevo)
+- `frontend/.env.example` (actualizado con variables de Supabase)
+- `backend/.env` (configurado con credenciales reales)
+
+**Technical Decisions**:
+
+1. **Cache Strategy: Global vs Per-User**
+   - Decision: Cache global compartida entre usuarios
+   - Rationale: Maximiza reuso de traducciones (frases comunes de SCORM), reduce costos de API
+   - Trade-off: Menos privacidad, pero contenido SCORM es típicamente no-sensible
+
+2. **Context Hash para Invalidación**
+   - Decision: MD5 hash del contexto del curso en campo `context_hash`
+   - Rationale: Permite invalidar cache cuando cambia el contenido del curso, mismo texto con diferente contexto puede necesitar diferente traducción
+   - Implementation: Unique constraint incluye context_hash
+
+3. **Cleanup Strategy**
+   - Decision: Función `clean_old_cache_entries()` manual (no lifecycle policy automática)
+   - Rationale: Supabase Free tier no soporta lifecycle policies, función puede ser llamada vía Celery cron job
+   - Threshold: 90 días sin uso (configurable)
+
+4. **RLS on Cache**
+   - Decision: Lectura pública, escritura solo service_role
+   - Rationale: Previene que usuarios maliciosos inyecten traducciones incorrectas, backend tiene control total del cache
+   - Security: service_role key nunca expuesta en frontend
+
+**Status**: ✅ Completed
+- Migration 001: ✅ Ejecutada
+- Migration 002: ✅ Ejecutada (con fix)
+- Storage setup: ✅ Completado
+- Env vars: ✅ Configuradas
+- Verification: ✅ 9/9 tests pasando
+
+**Next Steps**:
+- Opcional: Ejecutar seed data para testing local
+- Configurar `frontend/.env` con variables de Supabase
+- Implementar STORY-017: Autenticación con Supabase Auth
+- O continuar con stories de backend que ahora pueden usar Supabase
+
+---
 
 ### [2025-11-27 15:45] - Sprint 3: Implementación Completa del Frontend
 
