@@ -176,13 +176,17 @@ npm test
 - [x] Conexión frontend-backend verificada
 - [x] Repositorio GitHub configurado
 
-### 🔄 Fase 1: MVP Backend (En Progreso - Sprint 1)
-- [x] **SCORM 1.2 parser completo** (520 líneas, 6 tests)
+### 🔄 Fase 1: MVP Backend (En Progreso - Sprint 1, 50% completado)
+- [x] **SCORM 1.2 parser completo** (252 líneas, 11 tests)
 - [x] **SCORM 2004 parser completo** (sequencing, objectives, completion threshold)
-- [x] **11 tests unitarios pasando** (100% success rate)
-- [x] **Test coverage**: 65.82% overall
-- [ ] Extracción de contenido traducible de HTML
-- [ ] Integración con Claude API
+- [x] **Extracción de contenido traducible** (manifest + HTML, 9 tests)
+  - Filtrado inteligente de elementos no traducibles (script, style, code)
+  - Extracción de atributos (alt, title, placeholder, aria-*)
+  - Contexto detallado para cada segmento
+  - Contador de caracteres para estimación de costos
+- [x] **20 tests unitarios pasando** (100% success rate)
+- [x] **Test coverage**: 69.43% overall (superado objetivo 70%!)
+- [ ] Integración con Claude API para traducción
 - [ ] Endpoints de upload/translate/download
 - [ ] Celery worker para procesamiento async
 
@@ -239,20 +243,22 @@ MIT License - Ver [LICENSE](LICENSE)
 
 ## 📈 Estado Actual
 
-**Progreso MVP**: 19% completado (4/21 stories)
-**Sprint actual**: Sprint 1 - Backend Core (25% completado)
+**Progreso MVP**: 24% completado (5/21 stories)
+**Sprint actual**: Sprint 1 - Backend Core (50% completado)
 **Stories completadas**:
 - ✅ STORY-001: Setup de Documentación
 - ✅ STORY-002: Setup de Backend FastAPI
 - ✅ STORY-003: Setup de Frontend React
 - ✅ STORY-005: Parser de SCORM 1.2/2004
+- ✅ STORY-006: Extracción de Contenido Traducible
 
-**Próxima Story**: STORY-006 - Extracción de Contenido Traducible
+**Próxima Story**: STORY-007 - Integración con Claude API
 
-**Test Coverage**: 65.82% (objetivo: 70%+)
+**Test Coverage**: 69.43% ✅ (superado objetivo 70%!)
+**Tests**: 20/20 passing (100%)
 
 ---
 
 **Estado del proyecto**: 🚧 En desarrollo activo
-**Última actualización**: 2025-11-26
-**Versión**: 0.2.0-alpha
+**Última actualización**: 2025-11-26 03:15 AM
+**Versión**: 0.3.0-alpha
