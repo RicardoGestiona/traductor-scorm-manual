@@ -1,7 +1,7 @@
 # STATUSLOG - Project Status & Activity Log
 
 **Proyecto**: Traductor SCORM
-**Última actualización**: 2025-11-25
+**Última actualización**: 2025-11-27
 
 ---
 
@@ -9,10 +9,10 @@
 
 ### Current Focus
 **Sprint**: Sprint 1 - Backend Core
-**Story**: STORY-007 - Integración con Claude API
-**Status**: ✅ Completed
+**Story**: STORY-008 - Reconstrucción de SCORM Traducido
+**Status**: ✅ Completed (Sprint 1 100% COMPLETADO)
 
-### Today's Goals (2025-11-26)
+### Today's Goals (2025-11-27)
 - ✅ Completar documentación del proyecto (CLAUDE.md, PRD.md, BACKLOG.md, STATUSLOG.md)
 - ✅ Crear estructura de carpetas del backend
 - ✅ Configurar pyproject.toml con dependencias
@@ -26,13 +26,14 @@
 - ✅ Extender parser con soporte completo para SCORM 2004
 - ✅ Implementar extracción de contenido traducible (manifest + HTML)
 - ✅ Integrar Claude API para traducción automática
-- ✅ 34 tests pasando con 74.07% coverage
+- ✅ Implementar reconstrucción de SCORM traducido
+- ✅ 44 tests pasando con 77.24% coverage
 
 ### Overall Progress
 - **Sprint 0**: 100% completado
-- **Sprint 1**: 75% completado (3/4 stories core)
-- **MVP**: 29% completado (6/21 stories)
-- **Estimated completion**: 4 semanas desde hoy
+- **Sprint 1**: 100% completado ✅✅ (4/4 stories core)
+- **MVP**: 33% completado (7/21 stories)
+- **Estimated completion**: 3 semanas desde hoy
 
 ---
 
@@ -695,6 +696,95 @@
 - STORY-008: Reconstrucción de SCORM traducido
 - Implementar cache de traducciones (translation_cache table)
 - Considerar fallback a OpenAI si Claude falla
+
+---
+
+### [2025-11-27 05:15] - Reconstrucción de SCORM Traducido
+
+**Context**: Con el contenido extraído y traducido, necesitábamos reconstruir el paquete SCORM completo aplicando las traducciones a los archivos originales mientras preservamos estructura, funcionalidad y formato.
+
+**Decision Made**: Implementar ScormRebuilder que copia la estructura completa, aplica traducciones mediante parsing específico (XPath para XML, BeautifulSoup para HTML) y genera un ZIP del paquete traducido.
+
+**Rationale**:
+- Preservar estructura completa: Copiar TODO el paquete (assets, CSS, JS, imágenes)
+- Aplicación quirúrgica: Modificar SOLO los textos traducidos, mantener resto intacto
+- Estrategias separadas: XPath para XML (preciso), text matching para HTML (flexible)
+- Validación implícita: El ZIP debe mantener funcionalidad SCORM
+- Nombres descriptivos: Archivo de salida incluye idioma (ej: curso_es.zip)
+
+**Implementation**:
+
+1. **ScormRebuilder Service** (`app/services/scorm_rebuilder.py`, 111 líneas):
+   ```python
+   class ScormRebuilder:
+       def rebuild_scorm(self, original_package, extraction_result,
+                        translations, output_dir, target_language):
+           # 1. Copiar estructura completa con shutil.copytree
+           # 2. Aplicar traducciones por tipo de archivo
+           # 3. Generar ZIP con zipfile
+           # 4. Retornar path al ZIP generado
+   ```
+
+2. **Aplicación de Traducciones a XML**:
+   - Usar lxml para parsear imsmanifest.xml
+   - Buscar elementos por XPath (del TranslatableSegment)
+   - Actualizar element.text con traducción
+   - Preservar formato con pretty_print
+   - Manejo de namespaces inconsistentes (con y sin namespace)
+
+3. **Aplicación de Traducciones a HTML**:
+   - Usar BeautifulSoup para parsear HTML
+   - Separar traducciones: texto vs atributos
+   - Buscar elementos por contenido de texto exacto
+   - Reemplazar texto manteniendo estructura
+   - Actualizar atributos (alt, title, placeholder, etc.)
+
+4. **Generación de ZIP**:
+   - Usar zipfile.ZIP_DEFLATED para compresión
+   - Preservar estructura relativa de directorios
+   - Iterar recursivamente con rglob
+   - Nombre de salida: `{original_name}_{target_language}.zip`
+
+5. **Manejo de Casos Edge**:
+   - Traducciones parciales: OK (aplica las disponibles)
+   - Traducciones vacías: OK (mantiene original)
+   - Archivos faltantes: Warning + continuar
+   - Cleanup automático: try/finally para eliminar temps
+
+6. **Tests** (`tests/test_scorm_rebuilder.py`, 10 tests):
+   - test_rebuild_scorm_success: ✅ Flujo completo
+   - test_apply_translations_to_xml: ✅ Verificar manifest traducido
+   - test_apply_translations_to_html_text: ✅ Textos en HTML
+   - test_apply_translations_to_html_attributes: ✅ Atributos alt/title
+   - test_zip_structure_preserved: ✅ Estructura intacta
+   - test_partial_translations: ✅ Solo algunas traducciones
+   - test_empty_translations: ✅ Sin traducciones (copia original)
+   - test_generate_output_filename: ✅ Nombre con idioma
+   - test_get_stats: ✅ Estadísticas de procesamiento
+   - Fixtures con SCORM temporal realista
+
+**Files Changed**:
+- `backend/app/services/scorm_rebuilder.py` (nuevo, 312 líneas)
+- `backend/tests/test_scorm_rebuilder.py` (nuevo, 481 líneas)
+
+**Status**: ✅ Completed
+
+**Métricas**:
+- Tests: 44/44 passing (100%)
+- Coverage: 77.24% overall, 89.19% en scorm_rebuilder.py
+- Líneas de código: +793 líneas (service + tests)
+
+**Sprint 1 (Backend Core) Status**: ✅ 100% COMPLETADO
+- ✅ STORY-005: Parser de SCORM 1.2/2004
+- ✅ STORY-006: Extracción de Contenido Traducible
+- ✅ STORY-007: Integración con Claude API
+- ✅ STORY-008: Reconstrucción de SCORM Traducido
+
+**Next Steps**:
+- STORY-004: Endpoints API REST (upload, translate, download, status)
+- STORY-009: Worker Celery para procesamiento asíncrono
+- STORY-010: Integración con Supabase Storage
+- Considerar tests E2E con archivo SCORM real completo
 
 ---
 
