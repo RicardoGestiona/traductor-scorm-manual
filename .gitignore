@@ -1,14 +1,18 @@
 # General
 .DS_Store
-.env
-.env.local
-.env.*.local
 *.log
+
+# Environment variables (NEVER COMMIT THESE!)
 .env
 .env.local
 .env.*.local
+.env.development
+.env.production
 backend/.env
+backend/.env.local
 frontend/.env
+frontend/.env.local
+.claude/.env
 
 # IDEs
 .vscode/
