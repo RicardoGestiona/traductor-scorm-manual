@@ -38,13 +38,13 @@ Una vez creado el proyecto, ve a **Settings → API** y copia:
 
 ```bash
 # PROJECT URL
-SUPABASE_URL=https://[tu-project-id].supabase.co
+SUPABASE_URL=https://[xuezjcfmnghfzvujuhtj].supabase.co
 
 # ANON KEY (pública - se puede usar en frontend)
-SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1ZXpqY2ZtbmdoZnp2dWp1aHRqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQyMzIyNzMsImV4cCI6MjA3OTgwODI3M30.1Cob4jHpV2ItzOZ8QwArNCIh7TW4YOvqVHMpvHzhbi4
 
 # SERVICE ROLE KEY (privada - SOLO para backend)
-SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1ZXpqY2ZtbmdoZnp2dWp1aHRqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NDIzMjI3MywiZXhwIjoyMDc5ODA4MjczfQ.LRlub8s84KfR7vMzN4ZydQmqhU7MEInpxlp0X63wVPg
 ```
 
 **⚠️ IMPORTANTE**:
