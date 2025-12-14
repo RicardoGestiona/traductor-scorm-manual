@@ -6,20 +6,44 @@ Feature alignment: STORY-017 - Autenticación con Supabase
 """
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
+
 from app.main import app
+from app.core.auth import get_current_user
 
-client = TestClient(app)
+
+# ========================================
+# Test Client sin auth (para tests de auth endpoints)
+# ========================================
+
+@pytest.fixture
+def auth_client():
+    """Cliente sin override de autenticación para probar auth endpoints."""
+    app.dependency_overrides.clear()
+    with TestClient(app) as client:
+        yield client
+    app.dependency_overrides.clear()
 
 
-# Mock de Supabase Auth Response
+# ========================================
+# Mock Classes
+# ========================================
+
 class MockAuthUser:
     """Mock de User de Supabase"""
     def __init__(self, id: str, email: str, role: str = "authenticated"):
         self.id = id
         self.email = email
         self.role = role
+
+    def model_dump(self):
+        return {
+            "id": self.id,
+            "email": self.email,
+            "role": self.role,
+            "user_metadata": {}
+        }
 
 
 class MockAuthSession:
@@ -36,6 +60,10 @@ class MockAuthResponse:
         self.user = user
         self.session = session
 
+
+# ========================================
+# Fixtures
+# ========================================
 
 @pytest.fixture
 def mock_supabase_auth():
@@ -68,12 +96,12 @@ def valid_session():
 # Tests de POST /api/v1/auth/signup
 # ========================================
 
-def test_signup_success(mock_supabase_auth, valid_user, valid_session):
+def test_signup_success(mock_supabase_auth, valid_user, valid_session, auth_client):
     """Test signup exitoso con email y password válidos"""
     mock_response = MockAuthResponse(user=valid_user, session=valid_session)
     mock_supabase_auth.sign_up.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/signup",
         json={
             "email": "newuser@example.com",
@@ -90,12 +118,12 @@ def test_signup_success(mock_supabase_auth, valid_user, valid_session):
     assert data["user"]["id"] == valid_user.id
 
 
-def test_signup_user_already_exists(mock_supabase_auth):
+def test_signup_user_already_exists(mock_supabase_auth, auth_client):
     """Test signup con email que ya existe"""
     mock_response = MockAuthResponse(user=None, session=None)
     mock_supabase_auth.sign_up.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/signup",
         json={
             "email": "existing@example.com",
@@ -107,9 +135,9 @@ def test_signup_user_already_exists(mock_supabase_auth):
     assert "already be registered" in response.json()["detail"]
 
 
-def test_signup_invalid_email():
+def test_signup_invalid_email(auth_client):
     """Test signup con email inválido"""
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/signup",
         json={
             "email": "not-an-email",
@@ -120,9 +148,9 @@ def test_signup_invalid_email():
     assert response.status_code == 422  # Validation error
 
 
-def test_signup_missing_password():
+def test_signup_missing_password(auth_client):
     """Test signup sin contraseña"""
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/signup",
         json={
             "email": "test@example.com"
@@ -132,11 +160,11 @@ def test_signup_missing_password():
     assert response.status_code == 422
 
 
-def test_signup_supabase_error(mock_supabase_auth):
+def test_signup_supabase_error(mock_supabase_auth, auth_client):
     """Test signup con error de Supabase"""
     mock_supabase_auth.sign_up.side_effect = Exception("Supabase connection error")
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/signup",
         json={
             "email": "test@example.com",
@@ -152,12 +180,12 @@ def test_signup_supabase_error(mock_supabase_auth):
 # Tests de POST /api/v1/auth/login
 # ========================================
 
-def test_login_success(mock_supabase_auth, valid_user, valid_session):
+def test_login_success(mock_supabase_auth, valid_user, valid_session, auth_client):
     """Test login exitoso con credenciales válidas"""
     mock_response = MockAuthResponse(user=valid_user, session=valid_session)
     mock_supabase_auth.sign_in_with_password.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -174,12 +202,12 @@ def test_login_success(mock_supabase_auth, valid_user, valid_session):
     assert data["user"]["email"] == valid_user.email
 
 
-def test_login_invalid_credentials(mock_supabase_auth):
+def test_login_invalid_credentials(mock_supabase_auth, auth_client):
     """Test login con credenciales incorrectas"""
     mock_response = MockAuthResponse(user=None, session=None)
     mock_supabase_auth.sign_in_with_password.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "wrong@example.com",
@@ -191,9 +219,9 @@ def test_login_invalid_credentials(mock_supabase_auth):
     assert "Invalid email or password" in response.json()["detail"]
 
 
-def test_login_missing_email():
+def test_login_missing_email(auth_client):
     """Test login sin email"""
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "password": "password123"
@@ -203,11 +231,11 @@ def test_login_missing_email():
     assert response.status_code == 422
 
 
-def test_login_supabase_error(mock_supabase_auth):
+def test_login_supabase_error(mock_supabase_auth, auth_client):
     """Test login con error de Supabase"""
     mock_supabase_auth.sign_in_with_password.side_effect = Exception("Network error")
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/login",
         json={
             "email": "test@example.com",
@@ -224,14 +252,14 @@ def test_login_supabase_error(mock_supabase_auth):
 # ========================================
 
 @patch('app.core.auth.supabase.auth')
-def test_logout_success(mock_core_auth, mock_supabase_auth, valid_user):
+def test_logout_success(mock_core_auth, mock_supabase_auth, valid_user, auth_client):
     """Test logout exitoso con usuario autenticado"""
-    # Mock del get_current_user dependency
+    # Mock del get_current_user - verificar token y retornar usuario
     mock_user_response = MagicMock()
     mock_user_response.user = valid_user
     mock_core_auth.get_user.return_value = mock_user_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/logout",
         headers={"Authorization": "Bearer mock-token"}
     )
@@ -240,9 +268,9 @@ def test_logout_success(mock_core_auth, mock_supabase_auth, valid_user):
     assert "Successfully logged out" in response.json()["message"]
 
 
-def test_logout_without_auth():
+def test_logout_without_auth(auth_client):
     """Test logout sin token de autenticación"""
-    response = client.post("/api/v1/auth/logout")
+    response = auth_client.post("/api/v1/auth/logout")
 
     assert response.status_code == 403  # No credentials provided
 
@@ -252,13 +280,13 @@ def test_logout_without_auth():
 # ========================================
 
 @patch('app.core.auth.supabase.auth')
-def test_get_current_user_success(mock_auth, valid_user):
+def test_get_current_user_success(mock_auth, valid_user, auth_client):
     """Test obtener usuario actual con token válido"""
     mock_user_response = MagicMock()
     mock_user_response.user = valid_user
     mock_auth.get_user.return_value = mock_user_response
 
-    response = client.get(
+    response = auth_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": "Bearer valid-token"}
     )
@@ -270,19 +298,19 @@ def test_get_current_user_success(mock_auth, valid_user):
     assert data["role"] == valid_user.role
 
 
-def test_get_current_user_without_auth():
+def test_get_current_user_without_auth(auth_client):
     """Test obtener usuario sin autenticación"""
-    response = client.get("/api/v1/auth/me")
+    response = auth_client.get("/api/v1/auth/me")
 
     assert response.status_code == 403
 
 
 @patch('app.core.auth.supabase.auth')
-def test_get_current_user_invalid_token(mock_auth):
+def test_get_current_user_invalid_token(mock_auth, auth_client):
     """Test obtener usuario con token inválido"""
     mock_auth.get_user.side_effect = Exception("Invalid token")
 
-    response = client.get(
+    response = auth_client.get(
         "/api/v1/auth/me",
         headers={"Authorization": "Bearer invalid-token"}
     )
@@ -294,12 +322,12 @@ def test_get_current_user_invalid_token(mock_auth):
 # Tests de POST /api/v1/auth/refresh
 # ========================================
 
-def test_refresh_token_success(mock_supabase_auth, valid_user, valid_session):
+def test_refresh_token_success(mock_supabase_auth, valid_user, valid_session, auth_client):
     """Test refresh token exitoso"""
     mock_response = MockAuthResponse(user=valid_user, session=valid_session)
     mock_supabase_auth.refresh_session.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/refresh",
         params={"refresh_token": "valid-refresh-token"}
     )
@@ -310,12 +338,12 @@ def test_refresh_token_success(mock_supabase_auth, valid_user, valid_session):
     assert "refresh_token" in data
 
 
-def test_refresh_token_invalid(mock_supabase_auth):
+def test_refresh_token_invalid(mock_supabase_auth, auth_client):
     """Test refresh con token inválido o expirado"""
     mock_response = MockAuthResponse(user=None, session=None)
     mock_supabase_auth.refresh_session.return_value = mock_response
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/refresh",
         params={"refresh_token": "invalid-refresh-token"}
     )
@@ -324,11 +352,11 @@ def test_refresh_token_invalid(mock_supabase_auth):
     assert "Invalid or expired refresh token" in response.json()["detail"]
 
 
-def test_refresh_token_supabase_error(mock_supabase_auth):
+def test_refresh_token_supabase_error(mock_supabase_auth, auth_client):
     """Test refresh con error de Supabase"""
     mock_supabase_auth.refresh_session.side_effect = Exception("Token refresh failed")
 
-    response = client.post(
+    response = auth_client.post(
         "/api/v1/auth/refresh",
         params={"refresh_token": "some-token"}
     )
@@ -341,13 +369,14 @@ def test_refresh_token_supabase_error(mock_supabase_auth):
 # Tests de integración
 # ========================================
 
-def test_auth_flow_integration(mock_supabase_auth, valid_user, valid_session):
+@patch('app.core.auth.supabase.auth')
+def test_auth_flow_integration(mock_core_auth, mock_supabase_auth, valid_user, valid_session, auth_client):
     """Test flujo completo: signup → login → get user info → logout"""
     # 1. Signup
     mock_response = MockAuthResponse(user=valid_user, session=valid_session)
     mock_supabase_auth.sign_up.return_value = mock_response
 
-    signup_response = client.post(
+    signup_response = auth_client.post(
         "/api/v1/auth/signup",
         json={"email": "flow@test.com", "password": "test123"}
     )
@@ -355,28 +384,27 @@ def test_auth_flow_integration(mock_supabase_auth, valid_user, valid_session):
 
     # 2. Login
     mock_supabase_auth.sign_in_with_password.return_value = mock_response
-    login_response = client.post(
+    login_response = auth_client.post(
         "/api/v1/auth/login",
         json={"email": "flow@test.com", "password": "test123"}
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
 
-    # 3. Get user info (requiere mock de get_current_user)
-    with patch('app.core.auth.supabase.auth') as mock_core_auth:
-        mock_user_response = MagicMock()
-        mock_user_response.user = valid_user
-        mock_core_auth.get_user.return_value = mock_user_response
+    # 3. Get user info (mock core auth)
+    mock_user_response = MagicMock()
+    mock_user_response.user = valid_user
+    mock_core_auth.get_user.return_value = mock_user_response
 
-        user_response = client.get(
-            "/api/v1/auth/me",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        assert user_response.status_code == 200
+    user_response = auth_client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert user_response.status_code == 200
 
-        # 4. Logout
-        logout_response = client.post(
-            "/api/v1/auth/logout",
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        assert logout_response.status_code == 200
+    # 4. Logout
+    logout_response = auth_client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert logout_response.status_code == 200

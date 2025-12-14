@@ -72,6 +72,7 @@ class TranslationJobResponse(BaseModel):
     """Respuesta completa de un job de traducción."""
 
     id: UUID
+    user_id: Optional[UUID] = None
     original_filename: str
     scorm_version: Optional[str] = None
     source_language: str

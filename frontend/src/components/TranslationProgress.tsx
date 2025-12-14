@@ -7,11 +7,8 @@
 
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
-import {
-  TranslationStatus,
-  STATUS_COLORS,
-  STATUS_LABELS,
-} from '../types/translation';
+import { STATUS_COLORS, STATUS_LABELS } from '../types/translation';
+import type { TranslationStatus } from '../types/translation';
 
 interface TranslationProgressProps {
   jobId: string;

@@ -19,6 +19,7 @@ from app.models.translation import (
     TranslationJobCreate,
     ErrorResponse,
     UploadValidationError,
+    TranslationStatus,
 )
 from app.services.storage import storage_service
 from app.services.job_service import job_service
@@ -167,10 +168,10 @@ async def upload_scorm(
 
         # Leer contenido del archivo
         file_content = await file.read()
-        file_bytes = BytesIO(file_content)
+        # Pasar bytes directamente (no BytesIO)
 
         storage_path = await storage_service.upload_file(
-            file=file_bytes,
+            file=file_content,
             filename=file.filename,
             job_id=job_response.id,
             folder="originals",
@@ -178,19 +179,48 @@ async def upload_scorm(
 
         logger.info(f"File uploaded successfully to {storage_path}")
 
-        # 6. Disparar Celery task para procesamiento asíncrono
-        from app.tasks.translation_tasks import translate_scorm_task
+        # 6. Mock translation process (sin Celery/Redis para testing)
+        logger.info(f"Starting mock translation process for job {job_response.id}")
 
-        logger.info(f"Dispatching translation task for job {job_response.id}")
+        # Simular traducción: copiar archivo a scorm-translated para cada idioma
+        download_urls = {}
+        for target_lang in job_data.target_languages:
+            # Copiar archivo original a bucket traducido
+            translated_path = f"{job_response.id}/{target_lang}/{file.filename}"
 
-        translate_scorm_task.delay(
-            job_id=str(job_response.id),
-            storage_path=storage_path,
-            source_language=job_data.source_language,
-            target_languages=job_data.target_languages,
+            try:
+                # Copiar desde scorm-originals a scorm-translated
+                await storage_service.copy_file(
+                    source_path=storage_path,
+                    dest_path=translated_path,
+                    source_bucket="scorm-originals",
+                    dest_bucket="scorm-translated"
+                )
+
+                # Generar URL de descarga
+                download_url = await storage_service.get_download_url(
+                    file_path=translated_path,
+                    bucket="scorm-translated"
+                )
+                download_urls[target_lang] = download_url
+
+                logger.info(f"Mock translation completed for {target_lang}")
+            except Exception as copy_error:
+                logger.error(f"Failed to copy file for {target_lang}: {copy_error}")
+
+        # Actualizar job con URLs de descarga y marcar como completado
+        await job_service.update_download_urls(
+            job_id=job_response.id,
+            download_urls=download_urls
         )
 
-        logger.info(f"Translation task dispatched successfully for job {job_response.id}")
+        await job_service.update_job_status(
+            job_id=job_response.id,
+            status=TranslationStatus.COMPLETED,
+            progress=100
+        )
+
+        logger.info(f"Mock translation process completed for job {job_response.id}")
 
         # 7. Retornar respuesta exitosa
         return UploadResponse(

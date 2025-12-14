@@ -179,6 +179,87 @@ class StorageService:
         file.seek(0)  # Volver al inicio
         return size_bytes / (1024 * 1024)
 
+    async def copy_file(
+        self,
+        source_path: str,
+        dest_path: str,
+        source_bucket: str = "scorm-originals",
+        dest_bucket: str = "scorm-translated"
+    ) -> bool:
+        """
+        Copiar archivo entre buckets de Supabase Storage.
+
+        Args:
+            source_path: Path del archivo origen
+            dest_path: Path del archivo destino
+            source_bucket: Bucket origen
+            dest_bucket: Bucket destino
+
+        Returns:
+            True si se copió correctamente
+
+        Raises:
+            Exception: Si falla la copia
+        """
+        try:
+            logger.info(f"Copying file from {source_bucket}/{source_path} to {dest_bucket}/{dest_path}")
+
+            # Descargar archivo del bucket origen
+            file_content = self.client.storage.from_(source_bucket).download(source_path)
+
+            if not file_content:
+                raise Exception(f"Could not download source file: {source_path}")
+
+            # Subir al bucket destino
+            response = self.client.storage.from_(dest_bucket).upload(
+                path=dest_path,
+                file=file_content,
+                file_options={"content-type": "application/zip"},
+            )
+
+            logger.info(f"File copied successfully to {dest_bucket}/{dest_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to copy file: {e}")
+            raise Exception(f"File copy failed: {str(e)}")
+
+    async def get_download_url(
+        self,
+        file_path: str,
+        bucket: str = "scorm-translated",
+        expires_in: int = 3600
+    ) -> str:
+        """
+        Generar URL firmada para descarga desde un bucket específico.
+
+        Args:
+            file_path: Path del archivo en storage
+            bucket: Bucket del que descargar
+            expires_in: Segundos de validez (default 1 hora)
+
+        Returns:
+            URL firmada para descarga
+
+        Raises:
+            Exception: Si falla la generación de URL
+        """
+        try:
+            response = self.client.storage.from_(bucket).create_signed_url(
+                path=file_path,
+                expires_in=expires_in
+            )
+
+            if response and "signedURL" in response:
+                logger.info(f"Generated download URL for {bucket}/{file_path}")
+                return response["signedURL"]
+
+            raise Exception(f"No signedURL in response for {file_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to generate download URL for {file_path}: {e}")
+            raise Exception(f"Download URL generation failed: {str(e)}")
+
 
 # Instancia global del servicio
 storage_service = StorageService()

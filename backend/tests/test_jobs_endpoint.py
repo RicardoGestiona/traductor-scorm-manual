@@ -6,26 +6,19 @@ Feature alignment: STORY-009 - Endpoint de Status de Job
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 from uuid import uuid4
 from datetime import datetime
-from fastapi.testclient import TestClient
 
-from app.main import app
 from app.models.translation import TranslationStatus, TranslationJobResponse
 
 
 @pytest.fixture
-def client():
-    """Cliente de test de FastAPI."""
-    return TestClient(app)
-
-
-@pytest.fixture
-def mock_job_uploaded():
+def mock_job_uploaded(mock_user):
     """Job en estado UPLOADED."""
     return TranslationJobResponse(
         id=uuid4(),
+        user_id=mock_user.id,
         original_filename="curso_basico.zip",
         scorm_version=None,  # Aún no detectado
         source_language="auto",
@@ -37,10 +30,11 @@ def mock_job_uploaded():
 
 
 @pytest.fixture
-def mock_job_translating():
+def mock_job_translating(mock_user):
     """Job en proceso de traducción."""
     return TranslationJobResponse(
         id=uuid4(),
+        user_id=mock_user.id,
         original_filename="curso_avanzado.zip",
         scorm_version="1.2",
         source_language="en",
@@ -52,11 +46,12 @@ def mock_job_translating():
 
 
 @pytest.fixture
-def mock_job_completed():
+def mock_job_completed(mock_user):
     """Job completado con download URLs."""
     job_id = uuid4()
     return TranslationJobResponse(
         id=job_id,
+        user_id=mock_user.id,
         original_filename="curso_completo.zip",
         scorm_version="2004",
         source_language="en",
@@ -73,10 +68,11 @@ def mock_job_completed():
 
 
 @pytest.fixture
-def mock_job_failed():
+def mock_job_failed(mock_user):
     """Job que falló."""
     return TranslationJobResponse(
         id=uuid4(),
+        user_id=mock_user.id,
         original_filename="curso_corrupto.zip",
         scorm_version="1.2",
         source_language="es",
@@ -91,10 +87,10 @@ def mock_job_failed():
 class TestJobsEndpoint:
     """Tests del endpoint GET /api/v1/jobs/{job_id}."""
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_status_uploaded(self, mock_get_job, client, mock_job_uploaded):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_uploaded(self, mock_job_svc, client, mock_job_uploaded):
         """Test: Obtener status de job recién subido."""
-        mock_get_job.return_value = mock_job_uploaded
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_uploaded)
 
         response = client.get(f"/api/v1/jobs/{mock_job_uploaded.id}")
 
@@ -108,12 +104,12 @@ class TestJobsEndpoint:
         assert "uploaded successfully" in data["current_step"].lower()
         assert data["download_urls"] == {}
 
-    @patch("app.services.job_service.job_service.get_job")
+    @patch("app.api.v1.jobs.job_service")
     def test_get_job_status_translating(
-        self, mock_get_job, client, mock_job_translating
+        self, mock_job_svc, client, mock_job_translating
     ):
         """Test: Obtener status de job en proceso."""
-        mock_get_job.return_value = mock_job_translating
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_translating)
 
         response = client.get(f"/api/v1/jobs/{mock_job_translating.id}")
 
@@ -125,10 +121,10 @@ class TestJobsEndpoint:
         assert "translating" in data["current_step"].lower()
         assert "45%" in data["current_step"]
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_status_completed(self, mock_get_job, client, mock_job_completed):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_completed(self, mock_job_svc, client, mock_job_completed):
         """Test: Obtener status de job completado con download URLs."""
-        mock_get_job.return_value = mock_job_completed
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_completed)
 
         response = client.get(f"/api/v1/jobs/{mock_job_completed.id}")
 
@@ -143,10 +139,10 @@ class TestJobsEndpoint:
         assert "fr" in data["download_urls"]
         assert "storage.supabase.co" in data["download_urls"]["es"]
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_status_failed(self, mock_get_job, client, mock_job_failed):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_failed(self, mock_job_svc, client, mock_job_failed):
         """Test: Obtener status de job que falló."""
-        mock_get_job.return_value = mock_job_failed
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_failed)
 
         response = client.get(f"/api/v1/jobs/{mock_job_failed.id}")
 
@@ -159,10 +155,10 @@ class TestJobsEndpoint:
         assert "imsmanifest.xml" in data["error_message"]
         assert "failed" in data["current_step"].lower()
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_status_not_found(self, mock_get_job, client):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_not_found(self, mock_job_svc, client):
         """Test: Job no encontrado retorna 404."""
-        mock_get_job.return_value = None
+        mock_job_svc.get_job = AsyncMock(return_value=None)
         job_id = uuid4()
 
         response = client.get(f"/api/v1/jobs/{job_id}")
@@ -180,10 +176,10 @@ class TestJobsEndpoint:
         # Assertions
         assert response.status_code == 422  # Unprocessable Entity
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_status_service_error(self, mock_get_job, client):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_service_error(self, mock_job_svc, client):
         """Test: Error del servicio retorna 500."""
-        mock_get_job.side_effect = Exception("Database connection failed")
+        mock_job_svc.get_job = AsyncMock(side_effect=Exception("Database connection failed"))
         job_id = uuid4()
 
         response = client.get(f"/api/v1/jobs/{job_id}")
@@ -194,14 +190,35 @@ class TestJobsEndpoint:
         assert "detail" in data
         assert "error" in data["detail"]
 
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_status_forbidden_wrong_user(self, mock_job_svc, client, mock_user):
+        """Test: 403 si el job pertenece a otro usuario."""
+        job_id = uuid4()
+        mock_job = TranslationJobResponse(
+            id=job_id,
+            user_id="other-user-id-456",  # Different user
+            original_filename="curso.zip",
+            source_language="en",
+            target_languages=["es"],
+            status=TranslationStatus.UPLOADED,
+            progress_percentage=0,
+            created_at=datetime.utcnow(),
+        )
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job)
+
+        response = client.get(f"/api/v1/jobs/{job_id}")
+
+        assert response.status_code == 403
+        assert response.json()["detail"]["error"] == "Forbidden"
+
 
 class TestJobDetailsEndpoint:
     """Tests del endpoint GET /api/v1/jobs/{job_id}/details."""
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_details_success(self, mock_get_job, client, mock_job_completed):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_details_success(self, mock_job_svc, client, mock_job_completed):
         """Test: Obtener detalles completos de un job."""
-        mock_get_job.return_value = mock_job_completed
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_completed)
 
         response = client.get(f"/api/v1/jobs/{mock_job_completed.id}/details")
 
@@ -226,10 +243,10 @@ class TestJobDetailsEndpoint:
         assert data["scorm_version"] == "2004"
         assert len(data["target_languages"]) == 2
 
-    @patch("app.services.job_service.job_service.get_job")
-    def test_get_job_details_not_found(self, mock_get_job, client):
+    @patch("app.api.v1.jobs.job_service")
+    def test_get_job_details_not_found(self, mock_job_svc, client):
         """Test: Detalles de job no encontrado retorna 404."""
-        mock_get_job.return_value = None
+        mock_job_svc.get_job = AsyncMock(return_value=None)
         job_id = uuid4()
 
         response = client.get(f"/api/v1/jobs/{job_id}/details")
@@ -239,12 +256,12 @@ class TestJobDetailsEndpoint:
         data = response.json()
         assert "not found" in data["detail"]["error"].lower()
 
-    @patch("app.services.job_service.job_service.get_job")
+    @patch("app.api.v1.jobs.job_service")
     def test_get_job_details_vs_status_response_difference(
-        self, mock_get_job, client, mock_job_completed
+        self, mock_job_svc, client, mock_job_completed
     ):
         """Test: Verificar que /details retorna más info que /status."""
-        mock_get_job.return_value = mock_job_completed
+        mock_job_svc.get_job = AsyncMock(return_value=mock_job_completed)
 
         # GET status (lighter)
         status_response = client.get(f"/api/v1/jobs/{mock_job_completed.id}")
@@ -271,9 +288,9 @@ class TestJobDetailsEndpoint:
 class TestCurrentStepDescriptions:
     """Tests de las descripciones de pasos actuales."""
 
-    @patch("app.services.job_service.job_service.get_job")
+    @patch("app.api.v1.jobs.job_service")
     def test_current_step_descriptions_all_statuses(
-        self, mock_get_job, client, mock_job_uploaded
+        self, mock_job_svc, client, mock_job_uploaded
     ):
         """Test: Verificar que todos los estados tienen descripción."""
         statuses_to_test = [
@@ -286,11 +303,11 @@ class TestCurrentStepDescriptions:
             (TranslationStatus.FAILED, "failed"),
         ]
 
-        for status, expected_keyword in statuses_to_test:
+        for status_enum, expected_keyword in statuses_to_test:
             job = mock_job_uploaded
-            job.status = status
-            job.progress_percentage = 50 if status != TranslationStatus.COMPLETED else 100
-            mock_get_job.return_value = job
+            job.status = status_enum
+            job.progress_percentage = 50 if status_enum != TranslationStatus.COMPLETED else 100
+            mock_job_svc.get_job = AsyncMock(return_value=job)
 
             response = client.get(f"/api/v1/jobs/{job.id}")
             data = response.json()

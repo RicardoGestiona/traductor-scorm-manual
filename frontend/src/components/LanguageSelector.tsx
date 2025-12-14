@@ -6,7 +6,8 @@
  */
 
 import { useState } from 'react';
-import { SUPPORTED_LANGUAGES, Language } from '../types/translation';
+import { SUPPORTED_LANGUAGES } from '../types/translation';
+import type { Language } from '../types/translation';
 
 interface LanguageSelectorProps {
   sourceLanguage: string;

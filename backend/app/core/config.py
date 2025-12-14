@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_ANON_KEY: str
     SUPABASE_SERVICE_ROLE_KEY: str
-    SUPABASE_STORAGE_BUCKET: str = "scorm-packages"
+    SUPABASE_STORAGE_BUCKET: str = "scorm-originals"
 
     # AI Translation
     ANTHROPIC_API_KEY: str

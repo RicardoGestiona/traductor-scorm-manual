@@ -147,7 +147,7 @@ class JobService:
             True si se actualizó correctamente
         """
         try:
-            update_data: Dict[str, Any] = {"status": status.value}
+            update_data: Dict[str, Any] = {"status": status if isinstance(status, str) else status.value}
 
             if progress is not None:
                 update_data["progress_percentage"] = progress
