@@ -28,8 +28,10 @@ dependencies = [
     # File handling
     "python-multipart>=0.0.6",      # File uploads
 
-    # AI Translation
-    "anthropic>=0.8.0",             # Claude API
+    # AI Translation - Multiple providers
+    "googletrans==4.0.0-rc1",       # Google Translate (free, online)
+    "argostranslate>=1.9.0",        # Argos Translate (free, offline)
+    "anthropic>=0.8.0",             # Claude API (paid, high quality)
     "openai>=1.6.0",                # OpenAI API (optional fallback)
 
     # Database & Storage
@@ -108,6 +110,8 @@ module = [
     "celery.*",
     "lxml.*",
     "bs4.*",
+    "googletrans.*",
+    "argostranslate.*",
 ]
 ignore_missing_imports = true
 

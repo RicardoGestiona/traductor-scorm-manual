@@ -26,8 +26,10 @@ class Settings(BaseSettings):
     SUPABASE_STORAGE_BUCKET: str = "scorm-originals"
 
     # AI Translation
-    ANTHROPIC_API_KEY: str
+    TRANSLATION_PROVIDER: str = "google"  # Options: google, argos, claude
+    ANTHROPIC_API_KEY: str = ""  # Required only for claude provider
     OPENAI_API_KEY: str = ""  # Optional fallback
+    ARGOS_AUTO_DOWNLOAD: bool = True  # Auto-download missing language models
 
     # Database
     DATABASE_URL: str = (
