@@ -102,6 +102,8 @@ async def upload_scorm(
     """
     validation_errors: List[UploadValidationError] = []
 
+    logger.info(f"Upload request - file: {file.filename}, source: {source_language}, target: {target_languages}, user: {user.email}")
+
     # 1. Validar extensión
     if not validate_file_extension(file.filename):
         validation_errors.append(
@@ -144,6 +146,7 @@ async def upload_scorm(
 
     # Si hay errores de validación, retornar 400
     if validation_errors:
+        logger.error(f"Validation errors: {[error.dict() for error in validation_errors]}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={

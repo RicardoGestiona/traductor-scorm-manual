@@ -5,7 +5,7 @@
  * Feature alignment: STORY-003 - Setup Frontend React, STORY-017 - Autenticación
  */
 
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -57,6 +57,12 @@ export function Layout({ children }: LayoutProps) {
                 <>
                   {user ? (
                     <div className="flex items-center space-x-4">
+                      <Link
+                        to="/history"
+                        className="text-sm text-gray-600 hover:text-gray-900"
+                      >
+                        Historial
+                      </Link>
                       <span className="text-sm text-gray-700">
                         {user.email}
                       </span>

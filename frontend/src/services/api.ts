@@ -199,6 +199,22 @@ class ApiClient {
   }
 
   /**
+   * Get download URL for a specific language package
+   * @returns URL string for download
+   */
+  getDownloadUrl(jobId: string, language: string): string {
+    return `${this.baseURL}/api/v1/download/${jobId}/${language}`;
+  }
+
+  /**
+   * Get download URL for all packages (bundle)
+   * @returns URL string for download
+   */
+  getDownloadAllUrl(jobId: string): string {
+    return `${this.baseURL}/api/v1/download/${jobId}/all`;
+  }
+
+  /**
    * Descargar todos los paquetes traducidos (bundle)
    * @requires Authentication
    */
@@ -225,6 +241,46 @@ class ApiClient {
     a.click();
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
+  }
+
+  /**
+   * Obtener historial de traducciones del usuario
+   * @requires Authentication
+   */
+  async getHistory(
+    limit: number = 20,
+    offset: number = 0,
+    statusFilter?: string
+  ): Promise<{
+    jobs: Array<{
+      id: string;
+      original_filename: string;
+      source_language: string;
+      target_languages: string[];
+      status: string;
+      progress_percentage: number;
+      created_at: string;
+      completed_at?: string;
+      download_urls: Record<string, string>;
+      error_message?: string;
+    }>;
+    total: number;
+    limit: number;
+    offset: number;
+    has_more: boolean;
+  }> {
+    const authHeaders = await this.getAuthHeaders();
+
+    let url = `${this.baseURL}/api/v1/jobs?limit=${limit}&offset=${offset}`;
+    if (statusFilter) {
+      url += `&status_filter=${statusFilter}`;
+    }
+
+    const response = await fetch(url, {
+      headers: authHeaders,
+    });
+
+    return this.handleResponse(response);
   }
 }
 

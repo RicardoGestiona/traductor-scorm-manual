@@ -22,6 +22,12 @@ from app.models.scorm import (
     TranslatableContent,
     ContentType,
 )
+from app.services.filename_normalizer import (
+    normalize_files_in_directory,
+    update_references_in_html,
+    update_references_in_xml,
+    update_references_in_css,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -84,13 +90,21 @@ class ScormRebuilder:
             logger.debug(f"Copying file structure from {source_dir} to {temp_dir}")
             shutil.copytree(source_dir, temp_dir, dirs_exist_ok=True)
 
-            # 2. Aplicar traducciones a cada archivo procesado
+            # 2. Normalizar nombres de archivo (quitar tildes y caracteres especiales)
+            logger.debug("Normalizing filenames...")
+            rename_map = normalize_files_in_directory(temp_dir)
+            if rename_map:
+                logger.info(f"Normalized {len(rename_map)} filenames")
+                # Actualizar referencias en todos los archivos
+                self._update_file_references(temp_dir, rename_map)
+
+            # 3. Aplicar traducciones a cada archivo procesado
             for file_content in extraction_result.files_processed:
                 self._apply_translations_to_file(
                     file_content, translations, temp_dir
                 )
 
-            # 3. Generar ZIP
+            # 4. Generar ZIP
             output_filename = self._generate_output_filename(
                 original_package.filename, target_language
             )
@@ -262,6 +276,101 @@ class ScormRebuilder:
         # Guardar HTML modificado
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(str(soup))
+
+    def _update_file_references(
+        self, working_dir: Path, rename_map: Dict[str, str]
+    ) -> None:
+        """
+        Actualizar referencias a archivos renombrados en HTML, XML y CSS.
+
+        Args:
+            working_dir: Directorio de trabajo
+            rename_map: Mapeo de rutas originales a normalizadas
+        """
+        if not rename_map:
+            return
+
+        logger.debug(f"Updating file references for {len(rename_map)} renamed files")
+
+        # Procesar todos los archivos que pueden contener referencias
+        for file_path in working_dir.rglob("*"):
+            if not file_path.is_file():
+                continue
+
+            suffix = file_path.suffix.lower()
+
+            try:
+                if suffix in [".html", ".htm"]:
+                    self._update_html_references(file_path, rename_map)
+                elif suffix == ".xml":
+                    self._update_xml_references(file_path, rename_map)
+                elif suffix == ".css":
+                    self._update_css_references(file_path, rename_map)
+                elif suffix == ".js":
+                    # JavaScript también puede tener referencias a imágenes
+                    self._update_js_references(file_path, rename_map)
+            except Exception as e:
+                logger.warning(f"Error updating references in {file_path}: {e}")
+
+    def _update_html_references(
+        self, file_path: Path, rename_map: Dict[str, str]
+    ) -> None:
+        """Actualizar referencias en archivo HTML."""
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        updated_content = update_references_in_html(content, rename_map)
+
+        if content != updated_content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+            logger.debug(f"Updated references in {file_path.name}")
+
+    def _update_xml_references(
+        self, file_path: Path, rename_map: Dict[str, str]
+    ) -> None:
+        """Actualizar referencias en archivo XML."""
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        updated_content = update_references_in_xml(content, rename_map)
+
+        if content != updated_content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+            logger.debug(f"Updated references in {file_path.name}")
+
+    def _update_css_references(
+        self, file_path: Path, rename_map: Dict[str, str]
+    ) -> None:
+        """Actualizar referencias en archivo CSS."""
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        updated_content = update_references_in_css(content, rename_map)
+
+        if content != updated_content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+            logger.debug(f"Updated references in {file_path.name}")
+
+    def _update_js_references(
+        self, file_path: Path, rename_map: Dict[str, str]
+    ) -> None:
+        """Actualizar referencias en archivo JavaScript."""
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+
+        updated_content = content
+        for original, normalized in rename_map.items():
+            # Reemplazar strings literales que contengan el path
+            updated_content = updated_content.replace(f'"{original}"', f'"{normalized}"')
+            updated_content = updated_content.replace(f"'{original}'", f"'{normalized}'")
+
+        if content != updated_content:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(updated_content)
+            logger.debug(f"Updated references in {file_path.name}")
 
     def _generate_output_filename(self, original_filename: str, target_language: str) -> str:
         """

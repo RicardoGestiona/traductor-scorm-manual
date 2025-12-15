@@ -6,7 +6,7 @@ Feature alignment: STORY-004 - Upload, STORY-009 - Status de Job
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from uuid import UUID, uuid4
 from datetime import datetime
 from supabase import create_client, Client
@@ -51,6 +51,7 @@ class JobService:
 
             job_dict = {
                 "id": str(job_id),
+                "user_id": str(job_data.user_id) if job_data.user_id else None,
                 "original_filename": job_data.original_filename,
                 "source_language": job_data.source_language,
                 "target_languages": job_data.target_languages,
@@ -193,6 +194,84 @@ class JobService:
         except Exception as e:
             logger.error(f"Failed to update download URLs for job {job_id}: {e}")
             return False
+
+
+    async def list_jobs_by_user(
+        self,
+        user_id: str,
+        limit: int = 20,
+        offset: int = 0,
+        status_filter: Optional[str] = None,
+    ) -> List[TranslationJobResponse]:
+        """
+        Listar jobs de un usuario con paginación.
+
+        Args:
+            user_id: ID del usuario
+            limit: Máximo de resultados (default 20)
+            offset: Offset para paginación
+            status_filter: Filtrar por estado (opcional)
+
+        Returns:
+            Lista de jobs del usuario
+        """
+        try:
+            query = (
+                self.client.table(self.table)
+                .select("*")
+                .eq("user_id", user_id)
+                .order("created_at", desc=True)
+                .range(offset, offset + limit - 1)
+            )
+
+            if status_filter:
+                query = query.eq("status", status_filter)
+
+            response = query.execute()
+
+            jobs = []
+            for data in response.data or []:
+                jobs.append(
+                    TranslationJobResponse(
+                        id=UUID(data["id"]),
+                        user_id=UUID(data["user_id"]) if data.get("user_id") else None,
+                        original_filename=data["original_filename"],
+                        scorm_version=data.get("scorm_version"),
+                        source_language=data["source_language"],
+                        target_languages=data["target_languages"],
+                        status=TranslationStatus(data["status"]),
+                        progress_percentage=data.get("progress_percentage", 0),
+                        created_at=datetime.fromisoformat(data["created_at"]),
+                        completed_at=(
+                            datetime.fromisoformat(data["completed_at"])
+                            if data.get("completed_at")
+                            else None
+                        ),
+                        download_urls=data.get("download_urls", {}),
+                        error_message=data.get("error_message"),
+                    )
+                )
+
+            logger.info(f"Found {len(jobs)} jobs for user {user_id}")
+            return jobs
+
+        except Exception as e:
+            logger.error(f"Failed to list jobs for user {user_id}: {e}")
+            return []
+
+    async def count_jobs_by_user(self, user_id: str) -> int:
+        """Contar total de jobs de un usuario."""
+        try:
+            response = (
+                self.client.table(self.table)
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .execute()
+            )
+            return response.count or 0
+        except Exception as e:
+            logger.error(f"Failed to count jobs for user {user_id}: {e}")
+            return 0
 
 
 # Instancia global del servicio

@@ -5,7 +5,8 @@
  * Feature alignment: STORY-012 - Upload Component
  */
 
-import { useState, useRef, DragEvent, ChangeEvent } from 'react';
+import { useState, useRef } from 'react';
+import type { DragEvent, ChangeEvent } from 'react';
 
 interface UploadZoneProps {
   onFileSelect: (file: File) => void;

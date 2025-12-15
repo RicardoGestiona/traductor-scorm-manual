@@ -20,7 +20,7 @@ export function Home() {
 
   // Upload & language selection
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [sourceLanguage, setSourceLanguage] = useState('auto');
+  const [sourceLanguage, setSourceLanguage] = useState('es'); // Español por defecto
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -79,7 +79,7 @@ export function Home() {
   const handleStartNew = () => {
     setCurrentStep('upload');
     setSelectedFile(null);
-    setSourceLanguage('auto');
+    setSourceLanguage('es'); // Reset a español por defecto
     setTargetLanguages([]);
     setJobId(null);
     setOriginalFilename('');

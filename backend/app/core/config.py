@@ -41,7 +41,12 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    ALLOWED_ORIGINS: List[str] = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
 
     # File Upload
     MAX_UPLOAD_SIZE_MB: int = 500
@@ -63,6 +68,9 @@ class Settings(BaseSettings):
         "ja",
         "ru",
         "ar",
+        "ca",  # Catalán
+        "gl",  # Gallego
+        "eu",  # Euskera
     ]
     TRANSLATION_BATCH_SIZE: int = 50
 

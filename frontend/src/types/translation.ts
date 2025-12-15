@@ -17,7 +17,8 @@ export type TranslationStatus =
 export interface Language {
   code: string;
   name: string;
-  flag: string; // emoji flag
+  flag: string; // emoji flag o URL de imagen
+  flagType: 'emoji' | 'image'; // tipo de bandera
 }
 
 export interface TranslationJob {
@@ -42,19 +43,50 @@ export interface UploadResponse {
   created_at: string;
 }
 
+// URLs de banderas regionales (Wikimedia Commons)
+const FLAGS = {
+  es: '🇪🇸',
+  pt: '🇵🇹',
+  it: '🇮🇹',
+  ca: 'https://upload.wikimedia.org/wikipedia/commons/c/ce/Flag_of_Catalonia.svg',
+  gl: 'https://upload.wikimedia.org/wikipedia/commons/6/64/Flag_of_Galicia.svg',
+  eu: 'https://upload.wikimedia.org/wikipedia/commons/2/2d/Flag_of_the_Basque_Country.svg',
+};
+
+// Idioma origen por defecto
+export const DEFAULT_SOURCE_LANGUAGE: Language = {
+  code: 'es',
+  name: 'Español',
+  flag: FLAGS.es,
+  flagType: 'emoji',
+};
+
+// Idiomas origen disponibles (seleccionables)
+export const SOURCE_LANGUAGES: Language[] = [
+  { code: 'es', name: 'Español', flag: FLAGS.es, flagType: 'emoji' },
+  { code: 'ca', name: 'Català', flag: FLAGS.ca, flagType: 'image' },
+  { code: 'pt', name: 'Português (Portugal)', flag: FLAGS.pt, flagType: 'emoji' },
+  { code: 'it', name: 'Italiano', flag: FLAGS.it, flagType: 'emoji' },
+];
+
+// Idiomas destino disponibles para traducción
+export const TARGET_LANGUAGES: Language[] = [
+  { code: 'es', name: 'Español', flag: FLAGS.es, flagType: 'emoji' },
+  { code: 'ca', name: 'Català', flag: FLAGS.ca, flagType: 'image' },
+  { code: 'gl', name: 'Galego', flag: FLAGS.gl, flagType: 'image' },
+  { code: 'eu', name: 'Euskera', flag: FLAGS.eu, flagType: 'image' },
+  { code: 'pt', name: 'Português (Portugal)', flag: FLAGS.pt, flagType: 'emoji' },
+  { code: 'it', name: 'Italiano', flag: FLAGS.it, flagType: 'emoji' },
+];
+
+// Lista completa de idiomas (para compatibilidad y futuras expansiones)
 export const SUPPORTED_LANGUAGES: Language[] = [
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'en', name: 'English', flag: '🇬🇧' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
-  { code: 'pt', name: 'Português', flag: '🇵🇹' },
-  { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
-  { code: 'pl', name: 'Polski', flag: '🇵🇱' },
-  { code: 'zh', name: '中文', flag: '🇨🇳' },
-  { code: 'ja', name: '日本語', flag: '🇯🇵' },
-  { code: 'ru', name: 'Русский', flag: '🇷🇺' },
-  { code: 'ar', name: 'العربية', flag: '🇸🇦' },
+  { code: 'es', name: 'Español', flag: FLAGS.es, flagType: 'emoji' },
+  { code: 'ca', name: 'Català', flag: FLAGS.ca, flagType: 'image' },
+  { code: 'gl', name: 'Galego', flag: FLAGS.gl, flagType: 'image' },
+  { code: 'eu', name: 'Euskera', flag: FLAGS.eu, flagType: 'image' },
+  { code: 'pt', name: 'Português (Portugal)', flag: FLAGS.pt, flagType: 'emoji' },
+  { code: 'it', name: 'Italiano', flag: FLAGS.it, flagType: 'emoji' },
 ];
 
 export const STATUS_COLORS: Record<TranslationStatus, string> = {

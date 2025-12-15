@@ -59,6 +59,9 @@ class TranslationJobCreate(BaseModel):
             "ja",
             "ru",
             "ar",
+            "ca",  # Catalán
+            "gl",  # Gallego
+            "eu",  # Euskera
         }
         for lang in v:
             if lang not in supported:
@@ -114,3 +117,13 @@ class ErrorResponse(BaseModel):
     error: str
     details: Optional[str] = None
     validation_errors: Optional[List[UploadValidationError]] = None
+
+
+class JobListResponse(BaseModel):
+    """Respuesta paginada de lista de jobs (historial)."""
+
+    jobs: List[TranslationJobResponse]
+    total: int
+    limit: int
+    offset: int
+    has_more: bool

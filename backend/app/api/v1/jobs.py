@@ -14,6 +14,7 @@ from app.core.auth import get_current_user, User
 from app.models.translation import (
     TranslationJobResponse,
     JobStatusResponse,
+    JobListResponse,
     ErrorResponse,
 )
 from app.services.job_service import job_service
@@ -21,6 +22,78 @@ from app.services.job_service import job_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get(
+    "/jobs",
+    response_model=JobListResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Internal server error"},
+    },
+)
+async def list_jobs(
+    limit: int = 20,
+    offset: int = 0,
+    status_filter: Optional[str] = None,
+    user: User = Depends(get_current_user),
+):
+    """
+    List translation jobs for the authenticated user (history).
+
+    **Authentication:** Required (Bearer token)
+
+    **Query Parameters:**
+    - limit: Maximum number of results (default: 20, max: 100)
+    - offset: Offset for pagination (default: 0)
+    - status_filter: Filter by status (optional): uploaded, translating, completed, failed
+
+    **Returns:**
+    - jobs: List of translation jobs
+    - total: Total number of jobs for this user
+    - limit/offset: Pagination info
+    - has_more: Whether there are more results
+
+    **Example:**
+    ```bash
+    curl -X GET "http://localhost:8000/api/v1/jobs?limit=10&offset=0" \\
+      -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+    ```
+    """
+    try:
+        # Validar límite
+        limit = min(limit, 100)
+
+        logger.info(f"Listing jobs for user {user.email} (limit={limit}, offset={offset})")
+
+        # Obtener jobs del usuario
+        jobs = await job_service.list_jobs_by_user(
+            user_id=user.id,
+            limit=limit,
+            offset=offset,
+            status_filter=status_filter,
+        )
+
+        # Obtener total
+        total = await job_service.count_jobs_by_user(user.id)
+
+        return JobListResponse(
+            jobs=jobs,
+            total=total,
+            limit=limit,
+            offset=offset,
+            has_more=(offset + len(jobs)) < total,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to list jobs for user {user.email}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error": "Failed to list jobs",
+                "details": str(e),
+            },
+        )
 
 
 @router.get(
