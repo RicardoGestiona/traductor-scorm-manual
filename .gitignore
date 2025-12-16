@@ -38,3 +38,15 @@ docker-compose.override.yml
 temp/
 tmp/
 *.tmp
+
+# Security audit temporary files (contain sensitive info)
+CREDENTIALS_TO_ROTATE.md
+PENDING_SETUP_TASKS.md
+SUPABASE_SETUP_VERIFICATION.md
+
+# Claude agents configuration (local)
+.claude/agents/
+
+# Test SCORM files
+*.zip
+!backend/tests/fixtures/*.zip
