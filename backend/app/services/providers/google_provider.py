@@ -1,5 +1,5 @@
 """
-Google Translate provider using googletrans library.
+Google Translate provider using deep-translator library.
 
 Free, no API key required, uses Google Translate web service.
 
@@ -9,7 +9,7 @@ Filepath: backend/app/services/providers/google_provider.py
 import asyncio
 import logging
 from typing import Dict, List
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 from app.models.scorm import TranslatableSegment
 from .base import TranslationProvider
@@ -21,15 +21,14 @@ class GoogleTranslateProvider(TranslationProvider):
     """
     Translation provider using Google Translate (free).
 
-    Uses googletrans library which accesses Google Translate web API.
+    Uses deep-translator library which accesses Google Translate web API.
     No API key required, but may have rate limits.
     """
 
     name = "google"
 
     def __init__(self):
-        """Initialize the Google Translate client."""
-        self.translator = Translator()
+        """Initialize the Google Translate provider."""
         self.total_chars_translated = 0
         self.total_requests = 0
 
@@ -116,18 +115,17 @@ class GoogleTranslateProvider(TranslationProvider):
 
         self.total_requests += 1
 
-        # Run in thread pool since googletrans is synchronous
+        # Run in thread pool since deep-translator is synchronous
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: self.translator.translate(
-                text,
-                src=source_language,
-                dest=target_language
-            )
+            lambda: GoogleTranslator(
+                source=source_language,
+                target=target_language
+            ).translate(text)
         )
 
-        return result.text
+        return result or text
 
     def get_stats(self) -> Dict[str, int]:
         """Get translation statistics."""

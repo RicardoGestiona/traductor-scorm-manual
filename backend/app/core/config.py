@@ -14,7 +14,8 @@ class Settings(BaseSettings):
 
     # API
     ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    # SECURITY: DEBUG-001 fix - Secure default, enable via .env if needed
+    DEBUG: bool = False
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     API_V1_PREFIX: str = "/api/v1"

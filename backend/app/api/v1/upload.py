@@ -29,10 +29,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# SECURITY: FILE-001 fix - ZIP magic bytes for validation
+# Standard ZIP signatures
+ZIP_MAGIC_BYTES = [
+    b"PK\x03\x04",  # Standard ZIP
+    b"PK\x05\x06",  # Empty ZIP
+    b"PK\x07\x08",  # Spanned ZIP
+]
+
+
 def validate_file_extension(filename: str) -> bool:
     """Validar que el archivo tenga extensión permitida (.zip)."""
     file_ext = Path(filename).suffix.lower()
     return file_ext in settings.ALLOWED_EXTENSIONS
+
+
+def validate_file_magic_bytes(file: UploadFile) -> bool:
+    """
+    SECURITY: FILE-001 fix - Validate file is actually a ZIP by checking magic bytes.
+
+    This prevents attacks where a malicious file is renamed to .zip.
+
+    Args:
+        file: Upload file to validate
+
+    Returns:
+        True if file has valid ZIP magic bytes
+    """
+    try:
+        # Read first 4 bytes (ZIP signature length)
+        file.file.seek(0)
+        header = file.file.read(4)
+        file.file.seek(0)  # Reset for later use
+
+        # Check against known ZIP signatures
+        for magic in ZIP_MAGIC_BYTES:
+            if header.startswith(magic):
+                return True
+
+        return False
+    except Exception:
+        return False
 
 
 def validate_file_size(file: UploadFile) -> tuple[bool, float]:
@@ -111,6 +148,16 @@ async def upload_scorm(
                 field="file",
                 message=f"Invalid file extension. Allowed: {settings.ALLOWED_EXTENSIONS}",
                 code="invalid_extension",
+            )
+        )
+
+    # 1b. SECURITY: FILE-001 fix - Validar magic bytes (tipo real del archivo)
+    if not validate_file_magic_bytes(file):
+        validation_errors.append(
+            UploadValidationError(
+                field="file",
+                message="File is not a valid ZIP archive. The file content does not match ZIP format.",
+                code="invalid_file_type",
             )
         )
 
@@ -235,20 +282,21 @@ async def upload_scorm(
         )
 
     except Exception as e:
-        logger.error(f"Failed to process upload: {e}")
+        # SECURITY: ERROR-001 fix - Log full error internally, return generic message
+        logger.error(f"Failed to process upload: {e}", exc_info=True)
 
-        # Si ya se creó el job, marcarlo como failed
+        # Si ya se creó el job, marcarlo como failed (keep internal error for debugging)
         if "job_response" in locals():
             await job_service.update_job_status(
                 job_id=job_response.id,
                 status="FAILED",
-                error_message=f"Upload failed: {str(e)}",
+                error_message=f"Upload processing failed",  # Generic message stored
             )
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Failed to process upload",
-                "details": str(e),
+                "message": "An error occurred while processing your file. Please try again.",
             },
         )

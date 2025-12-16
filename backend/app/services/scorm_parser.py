@@ -46,7 +46,27 @@ class ScormParser:
     - Detectar versión de SCORM (1.2, 2004, xAPI)
     - Extraer metadata, organizaciones y recursos
     - Identificar archivos HTML traducibles
+
+    Security:
+    - XXE protection enabled (no external entities)
+    - ZIP Slip protection (path traversal prevention)
+    - ZIP bomb protection (size and ratio limits)
     """
+
+    # SECURITY: XXE-001 fix - Secure XML parser configuration
+    # Prevents XML External Entity (XXE) attacks
+    SECURE_XML_PARSER = etree.XMLParser(
+        resolve_entities=False,  # Don't resolve external entities
+        no_network=True,         # Don't allow network access
+        dtd_validation=False,    # Don't validate against DTD
+        load_dtd=False,          # Don't load external DTD
+        huge_tree=False,         # Limit tree size for DoS protection
+    )
+
+    # SECURITY: ZIP bomb protection limits
+    MAX_UNCOMPRESSED_SIZE = 1 * 1024 * 1024 * 1024  # 1GB max uncompressed
+    MAX_FILES_IN_ZIP = 10000                         # Max number of files
+    MAX_COMPRESSION_RATIO = 100                      # Max compression ratio (100:1)
 
     # Namespaces comunes de SCORM
     NAMESPACES = {
@@ -70,6 +90,102 @@ class ScormParser:
             temp_dir: Directorio temporal para extraer archivos (opcional)
         """
         self.temp_dir = temp_dir or tempfile.gettempdir()
+
+    def _validate_zip_safety(self, zip_path: str) -> None:
+        """
+        SECURITY: ZIP-002 fix - Validate ZIP file against bomb attacks.
+
+        Checks:
+        - Total uncompressed size doesn't exceed limit
+        - Number of files doesn't exceed limit
+        - Compression ratio isn't suspiciously high
+
+        Args:
+            zip_path: Path to the ZIP file
+
+        Raises:
+            ScormParserError: If ZIP fails safety validation
+        """
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                # Check number of files
+                file_count = len(zf.namelist())
+                if file_count > self.MAX_FILES_IN_ZIP:
+                    raise ScormParserError(
+                        f"ZIP contiene demasiados archivos ({file_count}). "
+                        f"Máximo permitido: {self.MAX_FILES_IN_ZIP}"
+                    )
+
+                # Calculate total uncompressed size
+                total_uncompressed = sum(info.file_size for info in zf.infolist())
+                if total_uncompressed > self.MAX_UNCOMPRESSED_SIZE:
+                    size_gb = total_uncompressed / (1024 * 1024 * 1024)
+                    raise ScormParserError(
+                        f"Tamaño descomprimido excede el límite ({size_gb:.2f}GB). "
+                        f"Máximo permitido: {self.MAX_UNCOMPRESSED_SIZE / (1024*1024*1024):.0f}GB"
+                    )
+
+                # Check compression ratio (zip bomb detection)
+                compressed_size = Path(zip_path).stat().st_size
+                if compressed_size > 0:
+                    ratio = total_uncompressed / compressed_size
+                    if ratio > self.MAX_COMPRESSION_RATIO:
+                        raise ScormParserError(
+                            f"Ratio de compresión sospechoso ({ratio:.1f}:1). "
+                            f"Máximo permitido: {self.MAX_COMPRESSION_RATIO}:1. "
+                            "Posible ZIP bomb detectado."
+                        )
+
+                logger.debug(
+                    f"ZIP safety validation passed: {file_count} files, "
+                    f"{total_uncompressed/(1024*1024):.1f}MB uncompressed, "
+                    f"ratio {ratio:.1f}:1"
+                )
+
+        except zipfile.BadZipFile:
+            raise ScormParserError("El archivo no es un ZIP válido")
+
+    def _safe_extract(self, zip_file: zipfile.ZipFile, extract_path: Path) -> None:
+        """
+        SECURITY: ZIP-001 fix - Safely extract ZIP preventing path traversal (Zip Slip).
+
+        Validates that all extracted files stay within the target directory.
+
+        Args:
+            zip_file: Open ZipFile object
+            extract_path: Target directory for extraction
+
+        Raises:
+            ScormParserError: If path traversal attempt detected
+        """
+        extract_path = extract_path.resolve()
+
+        for member in zip_file.namelist():
+            # Resolve the target path
+            member_path = (extract_path / member).resolve()
+
+            # SECURITY: Verify the path is within extract_path (prevent ../../../etc/passwd)
+            try:
+                member_path.relative_to(extract_path)
+            except ValueError:
+                raise ScormParserError(
+                    f"Intento de path traversal detectado en ZIP: {member}. "
+                    "El archivo contiene rutas maliciosas."
+                )
+
+            # SECURITY: Check for symlinks (could point outside directory)
+            info = zip_file.getinfo(member)
+            # Unix symlink has external_attr with 0o120000 in high bits
+            is_symlink = (info.external_attr >> 16) & 0o170000 == 0o120000
+            if is_symlink:
+                raise ScormParserError(
+                    f"Symlinks no permitidos en SCORM: {member}. "
+                    "El archivo contiene enlaces simbólicos."
+                )
+
+        # All checks passed, safe to extract
+        zip_file.extractall(extract_path)
+        logger.debug(f"ZIP extracted safely to {extract_path}")
 
     def validate_scorm_zip(self, zip_path: str) -> ScormValidationResult:
         """
@@ -97,7 +213,8 @@ class ScormParser:
                 # Extraer y parsear manifest para detectar versión
                 manifest_content = zf.read("imsmanifest.xml")
                 try:
-                    tree = etree.fromstring(manifest_content)
+                    # SECURITY: XXE-001 fix - Use secure parser
+                    tree = etree.fromstring(manifest_content, parser=self.SECURE_XML_PARSER)
                     version = self._detect_scorm_version(tree)
                     result.version = version
 
@@ -136,14 +253,17 @@ class ScormParser:
         if not validation.is_valid:
             raise ScormParserError(f"SCORM inválido: {', '.join(validation.errors)}")
 
+        # SECURITY: ZIP-002 fix - Validate against ZIP bombs before extraction
+        self._validate_zip_safety(zip_path)
+
         # Crear directorio temporal para extraer
         extract_path = Path(self.temp_dir) / f"scorm_{Path(zip_path).stem}"
         extract_path.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Extraer ZIP
+            # SECURITY: ZIP-001 fix - Safe extraction with path traversal protection
             with zipfile.ZipFile(zip_path, "r") as zf:
-                zf.extractall(extract_path)
+                self._safe_extract(zf, extract_path)
 
             # Parsear manifest
             manifest_path = extract_path / "imsmanifest.xml"
@@ -175,7 +295,8 @@ class ScormParser:
 
     def _parse_manifest(self, manifest_path: Path) -> ScormManifest:
         """Parsear imsmanifest.xml."""
-        tree = etree.parse(str(manifest_path))
+        # SECURITY: XXE-001 fix - Use secure parser
+        tree = etree.parse(str(manifest_path), parser=self.SECURE_XML_PARSER)
         root = tree.getroot()
 
         # Extraer información básica

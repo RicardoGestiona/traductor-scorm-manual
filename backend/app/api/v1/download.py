@@ -176,12 +176,13 @@ async def download_translated_scorm(
     except HTTPException:
         raise
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Log full error, return generic message
         logger.error(f"Unexpected error in download endpoint: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "error": "Internal server error",
-                "details": str(e),
+                "error": "Download failed",
+                "message": "An error occurred while preparing your download. Please try again.",
             },
         )
 
@@ -191,6 +192,8 @@ async def download_translated_scorm(
     response_class=FileResponse,
     responses={
         200: {"description": "ZIP file with all translated packages"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden - Job belongs to another user"},
         404: {"model": ErrorResponse, "description": "Job not found"},
         409: {"model": ErrorResponse, "description": "Translation not completed yet"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
@@ -198,6 +201,7 @@ async def download_translated_scorm(
 )
 async def download_all_translations(
     job_id: UUID,
+    user: User = Depends(get_current_user),
 ):
     """
     Download all translated SCORM packages in a single ZIP file.
@@ -231,7 +235,7 @@ async def download_all_translations(
     - Each language package maintains its individual ZIP structure
     """
     try:
-        logger.info(f"Download ALL request for job {job_id}")
+        logger.info(f"Download ALL request for job {job_id} (user: {user.email})")
 
         # 1. Obtener job de la base de datos
         job = await job_service.get_job(job_id)
@@ -246,7 +250,18 @@ async def download_all_translations(
                 },
             )
 
-        # 2. Verificar que el job esté completado
+        # 2. Verificar que el job pertenece al usuario autenticado (SECURITY: AUTH-001 fix)
+        if job.user_id and str(job.user_id) != user.id:
+            logger.warning(f"User {user.email} attempted to download ALL for job {job_id} owned by {job.user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "details": "You don't have permission to download this translation",
+                },
+            )
+
+        # 3. Verificar que el job esté completado
         if job.status != TranslationStatus.COMPLETED:
             logger.warning(
                 f"Job {job_id} not completed yet (status: {job.status.value})"
@@ -332,11 +347,12 @@ async def download_all_translations(
     except HTTPException:
         raise
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Log full error, return generic message
         logger.error(f"Unexpected error in download all endpoint: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
-                "error": "Internal server error",
-                "details": str(e),
+                "error": "Download failed",
+                "message": "An error occurred while preparing your downloads. Please try again.",
             },
         )

@@ -7,12 +7,24 @@ Filepath: backend/app/api/v1/auth.py
 Feature alignment: STORY-017 - Autenticación con Supabase
 """
 
+import re
 from fastapi import APIRouter, HTTPException, status, Depends
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from app.core.auth import get_supabase_client, get_current_user, User
 
 router = APIRouter()
 supabase = get_supabase_client()
+
+
+# SECURITY: PASSWORD-001 fix - Password validation constants
+MIN_PASSWORD_LENGTH = 8
+PASSWORD_REQUIREMENTS = {
+    "min_length": MIN_PASSWORD_LENGTH,
+    "require_uppercase": True,
+    "require_lowercase": True,
+    "require_digit": True,
+    "require_special": True,
+}
 
 
 # Request/Response Models
@@ -22,12 +34,39 @@ class SignupRequest(BaseModel):
     email: EmailStr
     password: str
 
+    # SECURITY: PASSWORD-001 fix - Validate password strength
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v: str) -> str:
+        """Validate password meets security requirements."""
+        errors = []
+
+        if len(v) < MIN_PASSWORD_LENGTH:
+            errors.append(f"debe tener al menos {MIN_PASSWORD_LENGTH} caracteres")
+
+        if not re.search(r"[A-Z]", v):
+            errors.append("debe contener al menos una mayúscula")
+
+        if not re.search(r"[a-z]", v):
+            errors.append("debe contener al menos una minúscula")
+
+        if not re.search(r"\d", v):
+            errors.append("debe contener al menos un número")
+
+        if not re.search(r"[!@#$%^&*(),.?\":{}|<>_\-+=\[\]\\;'/`~]", v):
+            errors.append("debe contener al menos un carácter especial (!@#$%^&*...)")
+
+        if errors:
+            raise ValueError(f"La contraseña {', '.join(errors)}")
+
+        return v
+
     model_config = {
         "json_schema_extra": {
             "examples": [
                 {
                     "email": "user@example.com",
-                    "password": "securePassword123",
+                    "password": "SecureP@ss123",
                 }
             ]
         }
@@ -148,9 +187,12 @@ async def signup(request: SignupRequest):
     except HTTPException:
         raise
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Don't expose internal error details
+        import logging
+        logging.getLogger(__name__).error(f"Signup error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Signup failed: {str(e)}",
+            detail="Registration failed. Please try again later.",
         )
 
 
@@ -194,9 +236,12 @@ async def login(request: LoginRequest):
     except HTTPException:
         raise
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Don't expose internal error details
+        import logging
+        logging.getLogger(__name__).error(f"Login error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Login failed: {str(e)}",
+            detail="Authentication failed. Please try again later.",
         )
 
 
@@ -224,9 +269,12 @@ async def logout(user: User = Depends(get_current_user)):
         return {"message": "Successfully logged out"}
 
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Don't expose internal error details
+        import logging
+        logging.getLogger(__name__).error(f"Logout error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Logout failed: {str(e)}",
+            detail="Logout failed. Please try again.",
         )
 
 
@@ -295,7 +343,10 @@ async def refresh_token(refresh_token: str):
     except HTTPException:
         raise
     except Exception as e:
+        # SECURITY: ERROR-001 fix - Don't expose internal error details
+        import logging
+        logging.getLogger(__name__).error(f"Token refresh error: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Token refresh failed: {str(e)}",
+            detail="Token refresh failed. Please login again.",
         )

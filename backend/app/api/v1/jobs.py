@@ -86,12 +86,13 @@ async def list_jobs(
         )
 
     except Exception as e:
-        logger.error(f"Failed to list jobs for user {user.email}: {e}")
+        # SECURITY: ERROR-001 fix - Log full error, return generic message
+        logger.error(f"Failed to list jobs for user {user.email}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Failed to list jobs",
-                "details": str(e),
+                "message": "An error occurred while retrieving your jobs. Please try again.",
             },
         )
 
@@ -219,12 +220,13 @@ async def get_job_status(
         raise
 
     except Exception as e:
-        logger.error(f"Failed to fetch job status for {job_id}: {e}")
+        # SECURITY: ERROR-001 fix - Log full error, return generic message
+        logger.error(f"Failed to fetch job status for {job_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Failed to fetch job status",
-                "details": str(e),
+                "message": "An error occurred while retrieving job status. Please try again.",
             },
         )
 
@@ -233,12 +235,15 @@ async def get_job_status(
     "/jobs/{job_id}/details",
     response_model=TranslationJobResponse,
     responses={
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden - Job belongs to another user"},
         404: {"model": ErrorResponse, "description": "Job not found"},
         500: {"model": ErrorResponse, "description": "Internal server error"},
     },
 )
 async def get_job_details(
     job_id: UUID = Path(..., description="Unique identifier of the translation job"),
+    user: User = Depends(get_current_user),
 ):
     """
     Get full details of a translation job.
@@ -259,7 +264,7 @@ async def get_job_details(
     (lighter response, optimized for frequent polling)
     """
     try:
-        logger.info(f"Fetching full details for job {job_id}")
+        logger.info(f"Fetching full details for job {job_id} (user: {user.email})")
 
         job = await job_service.get_job(job_id)
 
@@ -273,6 +278,17 @@ async def get_job_details(
                 },
             )
 
+        # SECURITY: IDOR-001 fix - Verificar que el job pertenece al usuario autenticado
+        if job.user_id and str(job.user_id) != user.id:
+            logger.warning(f"User {user.email} attempted to access job details {job_id} owned by {job.user_id}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Forbidden",
+                    "details": "You don't have permission to access this translation job",
+                },
+            )
+
         logger.info(f"Returning full details for job {job_id}")
         return job
 
@@ -280,12 +296,13 @@ async def get_job_details(
         raise
 
     except Exception as e:
-        logger.error(f"Failed to fetch job details for {job_id}: {e}")
+        # SECURITY: ERROR-001 fix - Log full error, return generic message
+        logger.error(f"Failed to fetch job details for {job_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "error": "Failed to fetch job details",
-                "details": str(e),
+                "message": "An error occurred while retrieving job details. Please try again.",
             },
         )
 
