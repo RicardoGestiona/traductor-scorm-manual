@@ -57,6 +57,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // SECURITY FIX: Proactive token refresh (HIGH-003)
+  useEffect(() => {
+    const refreshInterval = setInterval(async () => {
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (currentSession) {
+        const expiresAt = currentSession.expires_at;
+        const now = Math.floor(Date.now() / 1000);
+        const fiveMinutes = 5 * 60;
+
+        // Refresh if token expires within 5 minutes
+        if (expiresAt && (expiresAt - now) < fiveMinutes) {
+          await supabase.auth.refreshSession();
+        }
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(refreshInterval);
+  }, []);
+
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
       email,
@@ -73,8 +92,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error };
   };
 
+  // SECURITY FIX: Complete logout implementation (HIGH-004)
   const signOut = async () => {
+    // Clear Supabase session
     await supabase.auth.signOut();
+
+    // Clear local state
+    setUser(null);
+    setSession(null);
+
+    // Clear any cached data
+    try {
+      localStorage.removeItem('lastJobId');
+      sessionStorage.clear();
+    } catch {
+      // Storage may not be available in some contexts
+    }
+
+    // Redirect to login
+    window.location.href = '/login';
   };
 
   const value = {

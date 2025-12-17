@@ -25,27 +25,43 @@ export function UploadZone({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const validateFile = (file: File): string | null => {
-    // Validar extensión
+  // SECURITY FIX: Enhanced file validation with magic bytes (HIGH-005)
+  const validateFile = async (file: File): Promise<string | null> => {
+    // Validate extension
     if (!file.name.toLowerCase().endsWith('.zip')) {
       return 'El archivo debe ser un archivo ZIP';
     }
 
-    // Validar tamaño
+    // Validate size
     const fileSizeMB = file.size / (1024 * 1024);
     if (fileSizeMB > maxSize) {
       return `El archivo es demasiado grande (${fileSizeMB.toFixed(
         1
-      )}MB). Máximo: ${maxSize}MB`;
+      )}MB). Maximo: ${maxSize}MB`;
+    }
+
+    // Validate magic bytes (ZIP signature: PK..)
+    try {
+      const header = await file.slice(0, 4).arrayBuffer();
+      const bytes = new Uint8Array(header);
+      const zipSignature = [0x50, 0x4b, 0x03, 0x04]; // PK..
+      const isZip = zipSignature.every((byte, i) => bytes[i] === byte);
+
+      if (!isZip) {
+        return 'El archivo no es un ZIP valido (firma incorrecta)';
+      }
+    } catch {
+      return 'Error al validar el archivo';
     }
 
     return null;
   };
 
-  const handleFile = (file: File) => {
+  // SECURITY FIX: Async file handling for magic bytes validation
+  const handleFile = async (file: File) => {
     setError(null);
 
-    const validationError = validateFile(file);
+    const validationError = await validateFile(file);
     if (validationError) {
       setError(validationError);
       return;

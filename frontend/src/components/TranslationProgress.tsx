@@ -16,6 +16,10 @@ interface TranslationProgressProps {
   onError: (error: string) => void;
 }
 
+// SECURITY FIX: Max retries to prevent infinite polling (MED-004)
+const MAX_POLL_RETRIES = 180; // 6 minutes at 2s intervals
+const POLL_INTERVAL_MS = 2000;
+
 export function TranslationProgress({
   jobId,
   onComplete,
@@ -23,21 +27,30 @@ export function TranslationProgress({
 }: TranslationProgressProps) {
   const [status, setStatus] = useState<TranslationStatus>('uploaded');
   const [progress, setProgress] = useState(0);
-  const [currentStep, setCurrentStep] = useState('Iniciando traducción...');
+  const [currentStep, setCurrentStep] = useState('Iniciando traduccion...');
   const [isPolling, setIsPolling] = useState(true);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!isPolling) return;
 
+    // SECURITY FIX: Check max retries to prevent infinite loop (MED-004)
+    if (retryCount >= MAX_POLL_RETRIES) {
+      setIsPolling(false);
+      onError('Tiempo de espera agotado. La traduccion esta tardando demasiado.');
+      return;
+    }
+
     const pollInterval = setInterval(async () => {
       try {
+        setRetryCount(prev => prev + 1);
         const jobStatus = await api.getJobStatus(jobId);
 
         setStatus(jobStatus.status as TranslationStatus);
         setProgress(jobStatus.progress_percentage);
         setCurrentStep(jobStatus.current_step);
 
-        // Si completó o falló, dejar de hacer polling
+        // Si completo o fallo, dejar de hacer polling
         if (jobStatus.status === 'completed') {
           setIsPolling(false);
           clearInterval(pollInterval);
@@ -45,19 +58,22 @@ export function TranslationProgress({
         } else if (jobStatus.status === 'failed') {
           setIsPolling(false);
           clearInterval(pollInterval);
-          onError(jobStatus.error_message || 'Error desconocido en la traducción');
+          onError(jobStatus.error_message || 'Error desconocido en la traduccion');
         }
       } catch (error) {
-        console.error('Error polling job status:', error);
+        // SECURITY FIX: Environment-aware logging (MED-002)
+        if (import.meta.env.DEV) {
+          console.error('Error polling job status:', error);
+        }
         setIsPolling(false);
         clearInterval(pollInterval);
         onError(error instanceof Error ? error.message : 'Error al obtener estado');
       }
-    }, 2000); // Poll cada 2 segundos
+    }, POLL_INTERVAL_MS);
 
     // Cleanup al desmontar
     return () => clearInterval(pollInterval);
-  }, [jobId, isPolling, onComplete, onError]);
+  }, [jobId, isPolling, retryCount, onComplete, onError]);
 
   const statusColor = STATUS_COLORS[status];
   const statusLabel = STATUS_LABELS[status];
@@ -222,25 +238,8 @@ function StatusItem({
   );
 }
 
-// Add animation for shine effect in CSS
-// This would normally be in a global CSS file
-const styles = `
-  @keyframes shine {
-    0% {
-      transform: translateX(-100%);
-    }
-    100% {
-      transform: translateX(100%);
-    }
-  }
-  .animate-shine {
-    animation: shine 2s infinite;
-  }
-`;
-
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = styles;
-  document.head.appendChild(styleSheet);
-}
+// SECURITY FIX: Removed dynamic style injection (CRIT-001)
+// Animation styles are now defined in index.css or tailwind.config.js
+// The animate-shine class should be added to your CSS file:
+// @keyframes shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+// .animate-shine { animation: shine 2s infinite; }

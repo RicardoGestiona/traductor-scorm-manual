@@ -11,6 +11,29 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+/**
+ * SECURITY FIX: Strong password validation (HIGH-002)
+ * Validates password meets security requirements
+ */
+function validatePasswordStrength(password: string): string | null {
+  if (password.length < 8) {
+    return 'La contrasena debe tener al menos 8 caracteres';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'La contrasena debe contener al menos una mayuscula';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'La contrasena debe contener al menos una minuscula';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'La contrasena debe contener al menos un numero';
+  }
+  if (!/[!@#$%^&*(),.?":{}|<>_\-+=[\]\\;'/`~]/.test(password)) {
+    return 'La contrasena debe contener al menos un caracter especial';
+  }
+  return null;
+}
+
 export default function Signup() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,12 +52,14 @@ export default function Signup() {
     }
 
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden');
+      setError('Las contrasenas no coinciden');
       return;
     }
 
-    if (password.length < 6) {
-      setError('La contraseña debe tener al menos 6 caracteres');
+    // SECURITY FIX: Strong password validation (HIGH-002)
+    const passwordErrors = validatePasswordStrength(password);
+    if (passwordErrors) {
+      setError(passwordErrors);
       return;
     }
 
@@ -114,7 +139,7 @@ export default function Signup() {
                 autoComplete="new-password"
                 required
                 className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm"
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Minimo 8 caracteres (mayus, minus, num, especial)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={loading}

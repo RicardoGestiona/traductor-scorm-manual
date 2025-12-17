@@ -32,12 +32,16 @@ export function DownloadButtons({
 
   const [downloading, setDownloading] = useState<string | null>(null);
 
+  // SECURITY FIX: Environment-aware error handling (MED-002)
   const handleDownload = async (language: string) => {
     setDownloading(language);
     try {
       await api.downloadTranslatedPackage(jobId, language);
     } catch (error) {
-      console.error('Error downloading:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error downloading:', error);
+      }
+      // In production, errors are already user-friendly from api.ts
     } finally {
       setDownloading(null);
     }
@@ -48,7 +52,9 @@ export function DownloadButtons({
     try {
       await api.downloadAllPackages(jobId);
     } catch (error) {
-      console.error('Error downloading all:', error);
+      if (import.meta.env.DEV) {
+        console.error('Error downloading all:', error);
+      }
     } finally {
       setDownloadingAll(false);
     }

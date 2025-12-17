@@ -47,6 +47,41 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+# SECURITY: CRIT-002 fix - CSRF Protection Middleware
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    """
+    CSRF protection using custom header validation.
+
+    For state-changing requests (POST, PUT, DELETE), requires the
+    X-Requested-With header to be present. This header cannot be
+    set by cross-origin requests without CORS approval.
+    """
+
+    SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+    CSRF_HEADER = "X-Requested-With"
+    EXPECTED_VALUE = "XMLHttpRequest"
+
+    async def dispatch(self, request: Request, call_next):
+        # Skip CSRF check for safe methods
+        if request.method in self.SAFE_METHODS:
+            return await call_next(request)
+
+        # Skip for API docs endpoints
+        if request.url.path in ["/docs", "/redoc", "/openapi.json"]:
+            return await call_next(request)
+
+        # Check for CSRF protection header on state-changing requests
+        csrf_header = request.headers.get(self.CSRF_HEADER)
+
+        if not csrf_header or csrf_header != self.EXPECTED_VALUE:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "CSRF validation failed. Missing or invalid X-Requested-With header."},
+            )
+
+        return await call_next(request)
+
+
 app = FastAPI(
     title="Traductor SCORM API",
     description="API REST para traducir paquetes SCORM a múltiples idiomas usando IA",
@@ -59,6 +94,9 @@ app = FastAPI(
 # SECURITY: HEADER-001 fix - Add security headers middleware
 app.add_middleware(SecurityHeadersMiddleware)
 
+# SECURITY: CRIT-002 fix - Add CSRF protection middleware
+app.add_middleware(CSRFProtectionMiddleware)
+
 # SECURITY: CORS-001 fix - Restrictive CORS configuration
 app.add_middleware(
     CORSMiddleware,
@@ -67,6 +105,7 @@ app.add_middleware(
     # Restrict to specific methods instead of "*"
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     # Restrict to specific headers instead of "*"
+    # X-Requested-With is required for CSRF protection (CRIT-002)
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
 

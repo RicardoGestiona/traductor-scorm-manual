@@ -1,42 +1,43 @@
 # INFORME CONSOLIDADO DE SEGURIDAD - Traductor SCORM
 
-**Fecha de Auditoría**: 2025-12-16
-**Versión**: 1.0
-**Clasificación**: Confidencial
+**Fecha de Auditoria Backend/API**: 2025-12-16
+**Fecha de Auditoria Frontend**: 2025-12-17
+**Version**: 2.0
+**Clasificacion**: Confidencial
 
 ---
 
 ## RESUMEN EJECUTIVO
 
-Se ha realizado una auditoría de seguridad completa de la aplicación Traductor SCORM, cubriendo:
-- Frontend (React + TypeScript)
-- Backend (FastAPI + Python)
-- API REST
-- Supabase (Auth + RLS + Storage)
-- Configuración y Secretos
+Se ha realizado una auditoria de seguridad completa de la aplicacion Traductor SCORM, cubriendo:
+- Frontend (React + TypeScript) - **AUDITADO 2025-12-17**
+- Backend (FastAPI + Python) - **AUDITADO 2025-12-16**
+- API REST - **AUDITADO 2025-12-16**
+- Supabase (Auth + RLS + Storage) - **AUDITADO 2025-12-16**
+- Configuracion y Secretos - **AUDITADO 2025-12-16**
 
-### Hallazgos Totales
+### Hallazgos Totales (Post-Remediacion Backend)
 
-| Componente | CRITICAL | HIGH | MEDIUM | LOW | TOTAL |
-|------------|----------|------|--------|-----|-------|
-| Frontend | 1 | 3 | 4 | 3 | 11 |
-| Backend | 2 | 7 | 8 | 4 | 21 |
-| API REST | 3 | 5 | 4 | 3 | 15 |
-| Supabase | 3 | 5 | 4 | 3 | 15 |
-| Config/Secretos | 2 | 3 | 3 | 1 | 9 |
-| **TOTAL** | **11** | **23** | **23** | **14** | **71** |
+| Componente | CRITICAL | HIGH | MEDIUM | LOW | TOTAL | Estado |
+|------------|----------|------|--------|-----|-------|--------|
+| Frontend | 2 | 6 | 5 | 4 | 17 | PENDIENTE |
+| Backend | 0 | 1 | 1 | 2 | 4 | REMEDIADO |
+| API REST | 0 | 0 | 0 | 1 | 1 | REMEDIADO |
+| Supabase | 1 | 1 | 0 | 0 | 2 | PARCIAL |
+| Config/Secretos | 1 | 0 | 0 | 0 | 1 | PENDIENTE |
+| **TOTAL** | **4** | **8** | **6** | **7** | **25** | -- |
 
-**Nota**: Algunas vulnerabilidades se solapan entre componentes (ej: credenciales expuestas afecta a todos).
+**Nota**: El backend fue remediado el 2025-12-16. El frontend aun requiere remediacion.
 
-### Vulnerabilidades Únicas Consolidadas
+### Vulnerabilidades Pendientes por Componente
 
-| Severidad | Cantidad Única |
-|-----------|----------------|
-| CRITICAL | 5 |
-| HIGH | 12 |
-| MEDIUM | 10 |
-| LOW | 8 |
-| **TOTAL** | **35** |
+| Severidad | Frontend | Backend | Otros | Total |
+|-----------|----------|---------|-------|-------|
+| CRITICAL | 2 | 0 | 2 | 4 |
+| HIGH | 6 | 1 | 1 | 8 |
+| MEDIUM | 5 | 1 | 0 | 6 |
+| LOW | 4 | 2 | 1 | 7 |
+| **TOTAL** | **17** | **4** | **4** | **25** |
 
 ---
 
@@ -400,27 +401,52 @@ POSTGRES_PASSWORD: postgres  # Inseguro
 
 ## DOCUMENTOS RELACIONADOS
 
+- `docs/security/FRONTEND_SECURITY_AUDIT.md` - **[NEW]** Auditoria frontend React
 - `docs/security/API_SECURITY_AUDIT_REPORT.md` - Detalle de API
-- `docs/security/REMEDIATION_CODE_SAMPLES.md` - Código de remediación
+- `docs/security/REMEDIATION_CODE_SAMPLES.md` - Codigo de remediacion
 - `docs/security/EXECUTIVE_SUMMARY.md` - Resumen ejecutivo
 - `docs/security/SECURITY_CHECKLIST.md` - Checklist operacional
-- `CREDENTIALS_TO_ROTATE.md` - Credenciales a rotar (raíz del proyecto)
+- `CREDENTIALS_TO_ROTATE.md` - Credenciales a rotar (raiz del proyecto)
 
 ---
 
 ## CONCLUSIÓN
 
-La aplicación Traductor SCORM tiene **vulnerabilidades críticas** que deben resolverse **antes de cualquier despliegue en producción**. Las más urgentes son:
+### Estado del Backend (2025-12-16)
+El backend ha sido **significativamente endurecido** con las siguientes correcciones:
+- Proteccion XXE en parser XML
+- Proteccion Zip Slip y ZIP bomb
+- Validacion de ownership en endpoints
+- Security headers middleware
+- Mensajes de error genericos
+- CORS restrictivo
 
-1. **Credenciales expuestas** - Riesgo de acceso total a la base de datos
-2. **Bypass de RLS** - Las políticas de seguridad de Supabase son inefectivas
-3. **Endpoints sin autenticación** - Acceso público a archivos de usuarios
-4. **Vulnerabilidad XXE** - Posible ejecución de código o lectura de archivos
+**Vulnerabilidades Pendientes Backend**:
+- Rate limiting (requiere slowapi)
+- Rotacion de credenciales (manual)
+- RLS user-scoped (refactorizacion)
 
-Se recomienda **no desplegar a producción** hasta completar al menos la Fase 1 y Fase 2 del plan de remediación.
+### Estado del Frontend (2025-12-17)
+El frontend tiene **2 vulnerabilidades criticas** pendientes:
+
+1. **CRIT-001: Inyeccion de estilos CSS** - Riesgo de XSS via CSS injection
+2. **CRIT-002: Sin proteccion CSRF** - Operaciones de estado vulnerables
+
+**Prioridad de Remediacion Frontend**:
+- P0: CRIT-001, CRIT-002
+- P1: HIGH-001 a HIGH-006 (headers, passwords, tokens, logout, file validation, errors)
+- P2: MED-001 a MED-005
+- P3: LOW-001 a LOW-004
+
+### Recomendacion Final
+Se recomienda **no desplegar a produccion** hasta:
+1. Remediar vulnerabilidades criticas del frontend (CRIT-001, CRIT-002)
+2. Implementar security headers en index.html
+3. Rotar credenciales expuestas
 
 ---
 
-**Generado por**: Auditoría de Seguridad Automatizada
-**Fecha**: 2025-12-16
-**Próxima revisión recomendada**: Después de implementar Fase 1-2
+**Generado por**: Auditoria de Seguridad Automatizada
+**Fecha Backend**: 2025-12-16
+**Fecha Frontend**: 2025-12-17
+**Proxima revision recomendada**: Despues de remediar frontend

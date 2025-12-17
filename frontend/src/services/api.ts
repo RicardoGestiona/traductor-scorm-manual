@@ -2,12 +2,45 @@
  * API client service para conectar con el backend FastAPI.
  *
  * Filepath: frontend/src/services/api.ts
- * Feature alignment: STORY-003 - Setup Frontend React, STORY-017 - Autenticación
+ * Feature alignment: STORY-003 - Setup Frontend React, STORY-017 - Autenticacion
+ *
+ * SECURITY FIXES:
+ * - HIGH-006: Sanitized error messages
+ * - CRIT-002: CSRF token support (ready for backend implementation)
  */
 
 import { supabase } from '../contexts/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
+
+// SECURITY FIX: Environment-aware logging (MED-002)
+const isDevelopment = import.meta.env.DEV;
+const secureLog = {
+  error: (...args: unknown[]) => {
+    if (isDevelopment) {
+      console.error(...args);
+    }
+  },
+  warn: (...args: unknown[]) => {
+    if (isDevelopment) {
+      console.warn(...args);
+    }
+  },
+};
+
+// SECURITY FIX: Sanitized error messages (HIGH-006)
+const ERROR_MESSAGES: Record<number, string> = {
+  400: 'Solicitud invalida. Verifica los datos ingresados.',
+  401: 'Sesion expirada. Por favor inicia sesion nuevamente.',
+  403: 'No tienes permiso para esta accion.',
+  404: 'Recurso no encontrado.',
+  413: 'El archivo es demasiado grande.',
+  422: 'Los datos proporcionados no son validos.',
+  429: 'Demasiadas solicitudes. Intenta mas tarde.',
+  500: 'Error del servidor. Intenta mas tarde.',
+  502: 'Servicio temporalmente no disponible.',
+  503: 'Servicio en mantenimiento. Intenta mas tarde.',
+};
 
 class ApiClient {
   private baseURL: string;
@@ -17,26 +50,40 @@ class ApiClient {
   }
 
   /**
-   * Get authorization headers with JWT token
+   * Get authorization headers with JWT token and CSRF protection
+   * SECURITY FIX: Added X-Requested-With header for CSRF protection (CRIT-002)
    */
   private async getAuthHeaders(): Promise<HeadersInit> {
     const { data: { session } } = await supabase.auth.getSession();
 
+    const headers: HeadersInit = {
+      // SECURITY: CSRF protection - this header cannot be set by cross-origin requests
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+
     if (session?.access_token) {
-      return {
-        'Authorization': `Bearer ${session.access_token}`,
-      };
+      headers['Authorization'] = `Bearer ${session.access_token}`;
     }
 
-    return {};
+    return headers;
   }
 
   /**
-   * Handle API errors and throw appropriate messages
+   * SECURITY FIX: Handle API errors with sanitized messages (HIGH-006)
    */
-  private async handleResponse(response: Response): Promise<any> {
+  private async handleResponse<T>(response: Response): Promise<T> {
     if (response.ok) {
-      return response.json();
+      return response.json() as Promise<T>;
+    }
+
+    // Log detailed error only in development
+    if (isDevelopment) {
+      try {
+        const errorBody = await response.clone().text();
+        secureLog.error('API Error:', response.status, errorBody);
+      } catch {
+        // Ignore logging errors
+      }
     }
 
     // Handle authentication errors
@@ -44,20 +91,12 @@ class ApiClient {
       // Clear session and redirect to login
       await supabase.auth.signOut();
       window.location.href = '/login';
-      throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+      throw new Error(ERROR_MESSAGES[401]);
     }
 
-    if (response.status === 403) {
-      throw new Error('No tienes permiso para acceder a este recurso.');
-    }
-
-    // Try to get error message from response
-    try {
-      const error = await response.json();
-      throw new Error(error.detail?.error || error.detail || 'Error en la solicitud');
-    } catch {
-      throw new Error(`Error ${response.status}: ${response.statusText}`);
-    }
+    // Return sanitized error message
+    const message = ERROR_MESSAGES[response.status] || 'Error inesperado. Intenta nuevamente.';
+    throw new Error(message);
   }
 
   /**
