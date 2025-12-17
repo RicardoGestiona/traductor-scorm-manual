@@ -31,6 +31,25 @@ Sistema web + API para traducir paquetes SCORM (1.2, 2004, xAPI) a múltiples id
 
 ---
 
+## 🔐 Seguridad
+
+La aplicación implementa múltiples capas de seguridad:
+
+- ✅ **Protección CSRF** con header X-Requested-With
+- ✅ **Content Security Policy (CSP)** restrictiva
+- ✅ **Security Headers** (X-Frame-Options, X-Content-Type-Options, etc.)
+- ✅ **Validación de contraseñas** robusta (8+ chars, mayúsculas, números, especiales)
+- ✅ **Refresh automático de tokens** JWT
+- ✅ **Validación de archivos** con magic bytes (firma ZIP)
+- ✅ **Mensajes de error sanitizados** en producción
+- ✅ **Error Boundary** para errores de React
+- ✅ **Source maps deshabilitados** en producción
+- ✅ **RLS (Row Level Security)** en Supabase
+
+Ver auditoría completa en [docs/security/](docs/security/)
+
+---
+
 ## 🏗️ Arquitectura
 
 ```
@@ -130,12 +149,18 @@ Ver instrucciones detalladas en:
 
 ## 📖 Documentación
 
+### Para Usuarios
+
+- **[Guía de Usuario](docs/GUIA_USUARIO.md)**: Guía rápida de uso de la aplicación
+- **[CHANGELOG](CHANGELOG.md)**: Historial de cambios y versiones
+
 ### Para Desarrolladores
 
 - **[CLAUDE.md](.claude/CLAUDE.md)**: Arquitectura completa, stack, convenciones
 - **[PRD.md](.claude/PRD.md)**: Product Requirements, acceptance criteria
 - **[BACKLOG.md](.claude/BACKLOG.md)**: EPICs, Stories, Tasks
 - **[STATUSLOG.md](.claude/STATUSLOG.md)**: Estado actual, decisiones, ADRs
+- **[Seguridad](docs/security/)**: Auditorías y guías de seguridad
 
 ### API Reference
 
@@ -404,5 +429,5 @@ MIT License - Ver [LICENSE](LICENSE)
 ---
 
 **Estado del proyecto**: ✅ **MVP COMPLETADO - Production Ready**
-**Última actualización**: 2025-11-28
-**Versión**: **1.0.0-mvp** 🎉
+**Última actualización**: 2025-12-17
+**Versión**: **1.1.0** 🎉 (Security Hardening Release)
