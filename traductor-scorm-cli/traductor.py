@@ -101,40 +101,43 @@ class ScormParser:
     
     def parse(self, zip_path: Path) -> ScormPackage:
         """Parsear un paquete SCORM."""
-        # Extraer ZIP
         extract_path = self.temp_dir / f"scorm_{zip_path.stem}"
-        extract_path.mkdir(parents=True, exist_ok=True)
-        
-        with zipfile.ZipFile(zip_path, 'r') as z:
-            # Encontrar raíz del SCORM
-            manifest_path = self._find_manifest(z.namelist())
-            if not manifest_path:
-                raise ValueError("No se encontró imsmanifest.xml")
-            
-            # Extraer archivos
-            for member in z.namelist():
-                if not member.startswith('__MACOSX'):
-                    z.extract(member, extract_path)
-        
-        # Determinar carpeta raíz
-        manifest_full = extract_path / manifest_path
-        scorm_root = manifest_full.parent
-        
-        # Parsear manifest
-        tree = etree.parse(str(manifest_full))
+        manifest_path = self._extract_zip(zip_path, extract_path)
+
+        scorm_root = (extract_path / manifest_path).parent
+        tree = etree.parse(str(extract_path / manifest_path))
         root = tree.getroot()
-        
-        version = self._detect_version(root)
-        title = self._extract_title(root)
-        html_files = self._find_html_files(scorm_root)
-        
+
         return ScormPackage(
             zip_path=zip_path,
             extracted_path=scorm_root,
-            version=version,
-            title=title,
-            html_files=html_files,
+            version=self._detect_version(root),
+            title=self._extract_title(root),
+            html_files=self._find_html_files(scorm_root),
         )
+
+    def _extract_zip(self, zip_path: Path, extract_path: Path) -> str:
+        """Extraer ZIP y retornar ruta al manifest.
+
+        Returns:
+            Ruta relativa del imsmanifest.xml dentro del ZIP.
+
+        Raises:
+            ValueError: Si no encuentra manifest.
+        """
+        extract_path.mkdir(parents=True, exist_ok=True)
+
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            manifest_path = self._find_manifest(z.namelist())
+            if not manifest_path:
+                raise ValueError("No se encontró imsmanifest.xml")
+
+            # Extraer archivos (salvo __MACOSX)
+            for member in z.namelist():
+                if not member.startswith('__MACOSX'):
+                    z.extract(member, extract_path)
+
+        return manifest_path
     
     def _find_manifest(self, file_list: List[str]) -> Optional[str]:
         """Buscar imsmanifest.xml en el ZIP."""
@@ -291,39 +294,46 @@ class ContentExtractor:
         if isinstance(data, dict):
             for key, value in data.items():
                 # Saltar campos no traducibles
-                if key in {'id', 'key', 'src', 'href', 'type', 'color', 'icon'}:
+                if self._is_skippable_key(key):
                     continue
-                if key in {'media', 'settings', 'background'}:
-                    continue
-                
+
                 new_path = f"{path}.{key}" if path else key
-                
+
                 if isinstance(value, str) and len(value) >= 3:
-                    # Es un campo traducible o un label de UI?
-                    is_translatable = key.lower() in self.RISE_FIELDS
-                    is_ui_label = 'labelSet.labels' in new_path
-                    
-                    # Extraer texto (puede tener HTML)
-                    text = self._clean_html(value) if '<' in value else value.strip()
-                    
-                    if text and len(text) >= 3:
-                        # No es URL, ID, etc?
-                        if not self._is_non_text(text):
-                            # Para campos no traducibles, verificar que sea texto real
-                            if is_translatable or is_ui_label or self._is_real_text(text):
-                                seg_id = f"rise_{new_path.replace('.', '_')}"
-                                segments.append(Segment(
-                                    id=seg_id, 
-                                    text=value,  # Mantener original con HTML
-                                    path=new_path,
-                                    is_html='<' in value
-                                ))
+                    self._process_json_value(value, key, new_path, segments)
                 else:
                     self._extract_from_json(value, new_path, segments)
-        
+
         elif isinstance(data, list):
             for i, item in enumerate(data):
                 self._extract_from_json(item, f"{path}[{i}]", segments)
+
+    def _is_skippable_key(self, key: str) -> bool:
+        """Determinar si una clave de JSON debe ignorarse."""
+        non_translatable = {'id', 'key', 'src', 'href', 'type', 'color', 'icon',
+                           'media', 'settings', 'background'}
+        return key in non_translatable
+
+    def _process_json_value(self, value: str, key: str, path: str, segments: List[Segment]) -> None:
+        """Procesar un valor de string en JSON Rise."""
+        text = self._clean_html(value) if '<' in value else value.strip()
+
+        if not text or len(text) < 3:
+            return
+
+        # Verificar si es texto traducible
+        is_translatable = key.lower() in self.RISE_FIELDS
+        is_ui_label = 'labelSet.labels' in path
+        is_valid_text = not self._is_non_text(text) and (is_translatable or is_ui_label or self._is_real_text(text))
+
+        if is_valid_text:
+            seg_id = f"rise_{path.replace('.', '_')}"
+            segments.append(Segment(
+                id=seg_id,
+                text=value,  # Mantener original con HTML
+                path=path,
+                is_html='<' in value
+            ))
     
     def _extract_html(self, html_path: Path, rel_path: str) -> List[Segment]:
         """Extraer contenido de HTML estándar."""
@@ -337,25 +347,9 @@ class ContentExtractor:
             for tag in soup.find_all(self.SKIP_TAGS):
                 tag.decompose()
 
-            # Extraer textos
+            # Extraer textos y atributos
             for i, elem in enumerate(soup.find_all(self.TEXT_TAGS)):
-                text = elem.get_text(strip=True)
-                if text and len(text) >= 3:
-                    tag_name = elem.name
-                    seg_id = f"html_{rel_path}_{tag_name}_{i}"
-                    segments.append(Segment(id=seg_id, text=text, path=f"//{tag_name}[{i}]"))
-
-                # Extraer atributos traducibles
-                for attr in self.TRANSLATABLE_ATTRS:
-                    if elem.has_attr(attr):
-                        attr_text = elem[attr]
-                        if attr_text and len(attr_text) >= 3:
-                            seg_id = f"html_{rel_path}_{tag_name}_{i}_{attr}"
-                            segments.append(Segment(
-                                id=seg_id,
-                                text=attr_text,
-                                path=f"//{tag_name}[{i}]/@{attr}"
-                            ))
+                self._extract_element_and_attrs(elem, i, rel_path, segments)
 
         except (IOError, OSError) as e:
             logger.error(f"Cannot read HTML file: {html_path}", exc_info=True)
@@ -363,6 +357,27 @@ class ContentExtractor:
             logger.error(f"Error parsing HTML from {rel_path}: {e}", exc_info=True)
 
         return segments
+
+    def _extract_element_and_attrs(self, elem, index: int, rel_path: str, segments: List[Segment]) -> None:
+        """Extraer texto de elemento HTML y sus atributos traducibles."""
+        text = elem.get_text(strip=True)
+        if text and len(text) >= 3:
+            tag_name = elem.name
+            seg_id = f"html_{rel_path}_{tag_name}_{index}"
+            segments.append(Segment(id=seg_id, text=text, path=f"//{tag_name}[{index}]"))
+
+        # Extraer atributos traducibles
+        for attr in self.TRANSLATABLE_ATTRS:
+            if elem.has_attr(attr):
+                attr_text = elem[attr]
+                if attr_text and len(attr_text) >= 3:
+                    tag_name = elem.name
+                    seg_id = f"html_{rel_path}_{tag_name}_{index}_{attr}"
+                    segments.append(Segment(
+                        id=seg_id,
+                        text=attr_text,
+                        path=f"//{tag_name}[{index}]/@{attr}"
+                    ))
     
     def _clean_html(self, html: str) -> str:
         """Extraer texto de HTML."""
@@ -410,27 +425,13 @@ class Translator:
 
         for i, seg in enumerate(segments):
             try:
-                # Obtener texto limpio para traducir
-                text = self._clean_html(seg.text) if seg.is_html else seg.text
-
-                if text and len(text) >= 2:
-                    # Traducir
-                    translated = await self._translate_text(text, source_lang, target_lang)
-
-                    # Si era HTML, reconstruir con traducción
-                    if seg.is_html:
-                        translations[seg.id] = self._replace_in_html(seg.text, text, translated)
-                    else:
-                        translations[seg.id] = translated
-
-                    self.chars_translated += len(text)
+                result = await self._translate_segment(seg, source_lang, target_lang)
+                if result:
+                    translations[seg.id] = result
 
                 # Log de progreso cada 50 segmentos
                 if (i + 1) % 50 == 0:
-                    logger.debug(f"Translation progress", extra={
-                        "current": i + 1,
-                        "total": len(segments)
-                    })
+                    logger.debug("Translation progress", extra={"current": i + 1, "total": len(segments)})
 
                 # Pequeña pausa para evitar rate limiting
                 if (i + 1) % 20 == 0:
@@ -441,7 +442,23 @@ class Translator:
                 translations[seg.id] = seg.text  # Mantener original
 
         return translations
-    
+
+    async def _translate_segment(self, seg: Segment, source_lang: str, target_lang: str) -> Optional[str]:
+        """Traducir un segmento individual."""
+        text = self._clean_html(seg.text) if seg.is_html else seg.text
+
+        if not text or len(text) < 2:
+            return None
+
+        translated = await self._translate_text(text, source_lang, target_lang)
+        self.chars_translated += len(text)
+
+        # Si era HTML, reconstruir con traducción
+        if seg.is_html:
+            return self._replace_in_html(seg.text, text, translated)
+        else:
+            return translated
+
     async def _translate_text(self, text: str, source: str, target: str) -> str:
         """Traducir texto individual."""
         loop = asyncio.get_event_loop()
@@ -481,36 +498,49 @@ class ScormRebuilder:
         target_lang: str
     ) -> Path:
         """Reconstruir SCORM con traducciones."""
-        # Crear copia del paquete
         working_dir = output_dir / f"work_{target_lang}"
+        self._prepare_working_dir(working_dir, package.extracted_path)
+        self._apply_translations_to_files(working_dir, extraction, translations)
+
+        output_path = self._create_zip(package, working_dir, output_dir, target_lang)
+        shutil.rmtree(working_dir, ignore_errors=True)
+
+        return output_path
+
+    def _prepare_working_dir(self, working_dir: Path, source_path: Path) -> None:
+        """Preparar directorio de trabajo limpio."""
         if working_dir.exists():
             shutil.rmtree(working_dir)
-        shutil.copytree(package.extracted_path, working_dir)
-        
-        # Aplicar traducciones a cada archivo
+        shutil.copytree(source_path, working_dir)
+
+    def _apply_translations_to_files(
+        self,
+        working_dir: Path,
+        extraction: ExtractionResult,
+        translations: Dict[str, str]
+    ) -> None:
+        """Aplicar traducciones a cada archivo del paquete."""
         for file_path, segments in extraction.files.items():
             full_path = working_dir / file_path
-            
+
             if file_path == 'imsmanifest.xml':
                 self._apply_to_manifest(full_path, segments, translations)
             elif self._is_rise_file(full_path):
                 self._apply_to_rise(full_path, segments, translations)
             else:
                 self._apply_to_html(full_path, segments, translations)
-        
-        # Crear ZIP
+
+    def _create_zip(self, package: ScormPackage, working_dir: Path, output_dir: Path, target_lang: str) -> Path:
+        """Crear archivo ZIP del paquete traducido."""
         output_name = f"{package.zip_path.stem}_{target_lang}.zip"
         output_path = output_dir / output_name
-        
+
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as z:
             for file in working_dir.rglob('*'):
                 if file.is_file():
                     arcname = file.relative_to(working_dir)
                     z.write(file, arcname)
-        
-        # Limpiar directorio de trabajo
-        shutil.rmtree(working_dir)
-        
+
         return output_path
     
     def _is_rise_file(self, path: Path) -> bool:
