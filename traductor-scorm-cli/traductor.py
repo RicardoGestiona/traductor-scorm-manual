@@ -23,7 +23,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from xml.etree import ElementTree as ET
 
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
@@ -37,6 +36,12 @@ class JsonFormatter(logging.Formatter):
     """Formatter que emite logs en formato JSON."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Formatear record a JSON con metadatos."""
+        log_dict = self._build_log_dict(record)
+        return self._serialize_to_json(log_dict)
+
+    def _build_log_dict(self, record: logging.LogRecord) -> dict:
+        """Construir diccionario de log con metadatos."""
         log_data = {
             "level": record.levelname,
             "message": record.getMessage(),
@@ -45,7 +50,13 @@ class JsonFormatter(logging.Formatter):
         }
         if record.exc_info:
             log_data["exception"] = self.formatException(record.exc_info)
-        return json.dumps(log_data, ensure_ascii=False)
+        if hasattr(record, 'extra') and record.__dict__.get('extra'):
+            log_data.update(record.__dict__['extra'])
+        return log_data
+
+    def _serialize_to_json(self, log_dict: dict) -> str:
+        """Serializar diccionario a JSON."""
+        return json.dumps(log_dict, ensure_ascii=False)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -167,10 +178,12 @@ class ScormParser:
         """Encontrar archivos HTML en el paquete."""
         html_files = []
         for ext in ['*.html', '*.htm']:
-            for f in path.rglob(ext):
-                rel_path = str(f.relative_to(path))
-                html_files.append(rel_path)
+            html_files.extend(self._collect_files_by_ext(path, ext))
         return sorted(html_files)
+
+    def _collect_files_by_ext(self, path: Path, pattern: str) -> List[str]:
+        """Recopilar archivos por extensión."""
+        return [str(f.relative_to(path)) for f in path.rglob(pattern)]
 
 
 # ============================================================================
@@ -225,30 +238,33 @@ class ContentExtractor:
         manifest_path = scorm_root / 'imsmanifest.xml'
         if not manifest_path.exists():
             return []
-        
+
         segments = []
         tree = etree.parse(str(manifest_path))
-        
+
         # Extraer títulos de organizaciones e items
         for i, elem in enumerate(tree.iter()):
-            # Saltar elementos sin tag string (comments, PI, etc)
-            if not isinstance(elem.tag, str):
-                continue
-                
-            tag_name = elem.tag.split('}')[-1].lower() if '}' in elem.tag else elem.tag.lower()
-            
-            if tag_name == 'title' and elem.text and elem.text.strip():
-                text = elem.text.strip()
-                if len(text) >= 2:
-                    parent = elem.getparent()
-                    parent_tag = parent.tag.split('}')[-1] if parent is not None and isinstance(parent.tag, str) else 'root'
-                    parent_id = parent.get('identifier', str(i)) if parent is not None else str(i)
-                    
-                    seg_id = f"{parent_tag}_{parent_id}_title"
-                    path = tree.getpath(elem)
-                    segments.append(Segment(id=seg_id, text=text, path=path))
-        
+            self._process_manifest_element(elem, i, tree, segments)
+
         return segments
+
+    def _process_manifest_element(self, elem, index: int, tree, segments: List[Segment]) -> None:
+        """Procesar un elemento del manifest para extracción."""
+        if not isinstance(elem.tag, str):
+            return
+
+        tag_name = elem.tag.split('}')[-1].lower() if '}' in elem.tag else elem.tag.lower()
+
+        if tag_name == 'title' and elem.text and elem.text.strip():
+            text = elem.text.strip()
+            if len(text) >= 2:
+                parent = elem.getparent()
+                parent_tag = parent.tag.split('}')[-1] if parent is not None and isinstance(parent.tag, str) else 'root'
+                parent_id = parent.get('identifier', str(index)) if parent is not None else str(index)
+
+                seg_id = f"{parent_tag}_{parent_id}_title"
+                path = tree.getpath(elem)
+                segments.append(Segment(id=seg_id, text=text, path=path))
     
     def _is_rise_course(self, html_path: Path) -> bool:
         """Verificar si es un curso Articulate Rise."""
@@ -268,26 +284,29 @@ class ContentExtractor:
             with open(html_path, 'r', encoding='utf-8', errors='ignore') as f:
                 content = f.read()
 
-            # Buscar base64 encoded content
             match = re.search(r'deserialize\("([A-Za-z0-9+/=]+)"\)', content)
             if not match:
                 return segments
 
-            # Decodificar JSON
-            decoded = base64.b64decode(match.group(1)).decode('utf-8')
-            data = json.loads(decoded)
-
-            # Extraer recursivamente
-            self._extract_from_json(data, "", segments)
+            data = self._decode_rise_from_html(match.group(1), rel_path)
+            if data:
+                self._extract_from_json(data, "", segments)
 
         except (IOError, OSError) as e:
             logger.error(f"Cannot read Rise file: {html_path}", exc_info=True)
-        except (base64.binascii.Error, json.JSONDecodeError) as e:
-            logger.error(f"Invalid Rise JSON encoding in {rel_path}", exc_info=True)
         except Exception as e:
             logger.error(f"Unexpected error extracting Rise from {rel_path}: {e}", exc_info=True)
 
         return segments
+
+    def _decode_rise_from_html(self, base64_str: str, rel_path: str) -> Optional[dict]:
+        """Decodificar JSON Rise desde base64."""
+        try:
+            decoded = base64.b64decode(base64_str).decode('utf-8')
+            return json.loads(decoded)
+        except (base64.binascii.Error, json.JSONDecodeError) as e:
+            logger.error(f"Invalid Rise JSON encoding in {rel_path}", exc_info=True)
+            return None
     
     def _extract_from_json(self, data: Any, path: str, segments: List[Segment]):
         """Extraer recursivamente de JSON de Rise."""
@@ -424,24 +443,36 @@ class Translator:
         translations = {}
 
         for i, seg in enumerate(segments):
-            try:
-                result = await self._translate_segment(seg, source_lang, target_lang)
-                if result:
-                    translations[seg.id] = result
-
-                # Log de progreso cada 50 segmentos
-                if (i + 1) % 50 == 0:
-                    logger.debug("Translation progress", extra={"current": i + 1, "total": len(segments)})
-
-                # Pequeña pausa para evitar rate limiting
-                if (i + 1) % 20 == 0:
-                    await asyncio.sleep(0.5)
-
-            except Exception as e:
-                logger.error(f"Error translating segment {seg.id}", extra={"segment": seg.id}, exc_info=True)
-                translations[seg.id] = seg.text  # Mantener original
+            await self._translate_segment_safe(seg, source_lang, target_lang, i, len(segments), translations)
 
         return translations
+
+    async def _translate_segment_safe(
+        self,
+        seg: Segment,
+        source_lang: str,
+        target_lang: str,
+        index: int,
+        total: int,
+        translations: Dict[str, str]
+    ) -> None:
+        """Traducir segmento de forma segura con logging y rate limiting."""
+        try:
+            result = await self._translate_segment(seg, source_lang, target_lang)
+            if result:
+                translations[seg.id] = result
+
+            # Log de progreso cada 50 segmentos
+            if (index + 1) % 50 == 0:
+                logger.debug("Translation progress", extra={"current": index + 1, "total": total})
+
+            # Pequeña pausa para evitar rate limiting
+            if (index + 1) % 20 == 0:
+                await asyncio.sleep(0.5)
+
+        except Exception as e:
+            logger.error(f"Error translating segment {seg.id}", extra={"segment": seg.id}, exc_info=True)
+            translations[seg.id] = seg.text  # Mantener original
 
     async def _translate_segment(self, seg: Segment, source_lang: str, target_lang: str) -> Optional[str]:
         """Traducir un segmento individual."""
@@ -559,14 +590,7 @@ class ScormRebuilder:
             tree = etree.parse(str(path))
 
             for seg in segments:
-                if seg.id in translations:
-                    # Buscar elemento por XPath
-                    try:
-                        elements = tree.xpath(seg.path)
-                        if elements:
-                            elements[0].text = translations[seg.id]
-                    except etree.XPathError as e:
-                        logger.warning(f"Invalid XPath {seg.path}: {e}")
+                self._apply_segment_to_manifest(tree, seg, translations)
 
             tree.write(str(path), encoding='utf-8', xml_declaration=True)
         except etree.XMLSyntaxError as e:
@@ -575,6 +599,18 @@ class ScormRebuilder:
             logger.error(f"Cannot write manifest {path}", exc_info=True)
         except Exception as e:
             logger.error(f"Error applying translations to manifest: {e}", exc_info=True)
+
+    def _apply_segment_to_manifest(self, tree, seg: Segment, translations: Dict[str, str]) -> None:
+        """Aplicar traducción de un segmento en el XML del manifest."""
+        if seg.id not in translations:
+            return
+
+        try:
+            elements = tree.xpath(seg.path)
+            if elements:
+                elements[0].text = translations[seg.id]
+        except etree.XPathError as e:
+            logger.warning(f"Invalid XPath {seg.path}: {e}")
     
     def _apply_to_rise(self, path: Path, segments: List[Segment], translations: Dict[str, str]):
         """Aplicar traducciones a archivo Rise."""
@@ -582,40 +618,45 @@ class ScormRebuilder:
             with open(path, 'r', encoding='utf-8') as f:
                 content = f.read()
 
-            # Encontrar y decodificar base64
             match = re.search(r'deserialize\("([A-Za-z0-9+/=]+)"\)', content)
             if not match:
                 logger.debug(f"No Rise deserialize pattern found in {path}")
                 return
 
-            try:
-                decoded = base64.b64decode(match.group(1)).decode('utf-8')
-                data = json.loads(decoded)
-            except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
-                logger.error(f"Invalid Rise JSON encoding in {path}", exc_info=True)
+            data = self._decode_rise_content(match.group(1), path)
+            if data is None:
                 return
 
-            # Aplicar traducciones
             self._apply_to_json(data, "", segments, translations)
-
-            # Re-encodificar y validar
-            new_json = json.dumps(data, ensure_ascii=False)
-            new_base64 = base64.b64encode(new_json.encode('utf-8')).decode('utf-8')
-
-            if not new_base64:
-                logger.error(f"Base64 encoding failed for {path}")
-                return
-
-            # Reemplazar en contenido
-            new_content = content[:match.start(1)] + new_base64 + content[match.end(1):]
-
-            with open(path, 'w', encoding='utf-8') as f:
-                f.write(new_content)
+            self._encode_rise_content(path, data, match, content)
 
         except (IOError, OSError) as e:
             logger.error(f"Cannot read/write Rise file {path}", exc_info=True)
         except Exception as e:
             logger.error(f"Error applying translations to Rise {path}: {e}", exc_info=True)
+
+    def _decode_rise_content(self, base64_str: str, path: Path) -> Optional[dict]:
+        """Decodificar contenido Rise de base64 a JSON."""
+        try:
+            decoded = base64.b64decode(base64_str).decode('utf-8')
+            return json.loads(decoded)
+        except (base64.binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(f"Invalid Rise JSON encoding in {path}", exc_info=True)
+            return None
+
+    def _encode_rise_content(self, path: Path, data: dict, match, content: str) -> None:
+        """Recodificar contenido JSON a base64 y escribir archivo."""
+        new_json = json.dumps(data, ensure_ascii=False)
+        new_base64 = base64.b64encode(new_json.encode('utf-8')).decode('utf-8')
+
+        if not new_base64:
+            logger.error(f"Base64 encoding failed for {path}")
+            return
+
+        new_content = content[:match.start(1)] + new_base64 + content[match.end(1):]
+
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
     
     def _apply_to_json(self, data: Any, path: str, segments: List[Segment], translations: Dict[str, str]):
         """Aplicar traducciones recursivamente a JSON."""
@@ -693,7 +734,25 @@ async def _run_translation(
     temp_dir: Path
 ) -> None:
     """Orquestar el proceso de traducción."""
-    # 1. Parsear SCORM
+    package, extraction = await _parse_and_extract(zip_path, temp_dir)
+
+    if not extraction.segments:
+        logger.warning("No translatable content found")
+        return
+
+    translator, rebuilder = _initialize_processors()
+
+    for target_lang in target_langs:
+        await _process_single_language(
+            target_lang, source_lang, package, extraction,
+            translator, rebuilder, output_dir
+        )
+
+    _log_translation_summary(translator, target_langs)
+
+
+async def _parse_and_extract(zip_path: Path, temp_dir: Path) -> tuple[ScormPackage, ExtractionResult]:
+    """Parsear ZIP y extraer contenido traducible."""
     logger.info("Starting SCORM parsing", extra={"file": str(zip_path)})
     scorm_parser = ScormParser(temp_dir)
     package = scorm_parser.parse(zip_path)
@@ -703,7 +762,6 @@ async def _run_translation(
         "title": package.title
     })
 
-    # 2. Extraer contenido
     logger.info("Starting content extraction")
     extractor = ContentExtractor()
     extraction = extractor.extract(package)
@@ -712,40 +770,51 @@ async def _run_translation(
         "files": len(extraction.files)
     })
 
-    if not extraction.segments:
-        logger.warning("No translatable content found")
-        return
+    return package, extraction
 
-    # 3. Traducir para cada idioma
-    translator = Translator()
-    rebuilder = ScormRebuilder()
 
-    for target_lang in target_langs:
-        logger.info("Starting translation", extra={
-            "source": source_lang,
-            "target": target_lang
-        })
-        translations = await translator.translate(
-            extraction.segments,
-            source_lang,
-            target_lang
-        )
-        logger.info("Translation completed", extra={
-            "target": target_lang,
-            "segments": len(translations),
-            "chars": translator.chars_translated
-        })
+def _initialize_processors() -> tuple[Translator, ScormRebuilder]:
+    """Inicializar procesadores de traducción y reconstrucción."""
+    return Translator(), ScormRebuilder()
 
-        # 4. Reconstruir SCORM
-        logger.info("Rebuilding SCORM package", extra={"lang": target_lang})
-        output_path = rebuilder.rebuild(
-            package, extraction, translations, output_dir, target_lang
-        )
-        logger.info("Package built", extra={
-            "lang": target_lang,
-            "output": str(output_path)
-        })
 
+async def _process_single_language(
+    target_lang: str,
+    source_lang: str,
+    package: ScormPackage,
+    extraction: ExtractionResult,
+    translator: Translator,
+    rebuilder: ScormRebuilder,
+    output_dir: Path
+) -> None:
+    """Procesar traducción y reconstrucción para un idioma."""
+    logger.info("Starting translation", extra={
+        "source": source_lang,
+        "target": target_lang
+    })
+    translations = await translator.translate(
+        extraction.segments,
+        source_lang,
+        target_lang
+    )
+    logger.info("Translation completed", extra={
+        "target": target_lang,
+        "segments": len(translations),
+        "chars": translator.chars_translated
+    })
+
+    logger.info("Rebuilding SCORM package", extra={"lang": target_lang})
+    output_path = rebuilder.rebuild(
+        package, extraction, translations, output_dir, target_lang
+    )
+    logger.info("Package built", extra={
+        "lang": target_lang,
+        "output": str(output_path)
+    })
+
+
+def _log_translation_summary(translator: Translator, target_langs: list[str]) -> None:
+    """Registrar resumen final de traducción."""
     logger.info("Translation pipeline completed successfully", extra={
         "chars_total": translator.chars_translated,
         "langs": len(target_langs)
