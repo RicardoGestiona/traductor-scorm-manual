@@ -47,6 +47,9 @@ SUPABASE_SETUP_VERIFICATION.md
 # Claude agents configuration (local)
 .claude/agents/
 
+# Local Claude project configuration (NUNCA COMMITEAR)
+CLAUDE.local.md
+
 # Test SCORM files
 *.zip
 !backend/tests/fixtures/*.zip
