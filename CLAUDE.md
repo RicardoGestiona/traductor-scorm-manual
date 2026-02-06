@@ -4,86 +4,70 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Traductor SCORM - Sistema web + API para traducir paquetes SCORM (1.2, 2004, xAPI) a múltiples idiomas usando IA (Claude), manteniendo la integridad del contenido e-learning.
+**Traductor SCORM CLI** — Herramienta de línea de comandos (Python 3.14) para traducir paquetes SCORM (1.2, 2004, Articulate Rise) a múltiples idiomas usando Google Translate, preservando la estructura e integridad del contenido e-learning.
+
+**Ámbito activo:** Solo `traductor-scorm-cli/`. El resto de directorios (pendientes/, ficheros raíz) son auxiliares.
 
 ## Build & Development Commands
 
-### Con Docker Compose (Recomendado)
 ```bash
-cp backend/.env.example backend/.env  # Configurar API keys
-docker-compose up --build
-```
+# Setup
+cd traductor-scorm-cli
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
 
-### Desarrollo Local
-```bash
-# Backend
-cd backend
-python3 -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+# Ejecutar traducción
+python traductor.py <archivo.zip> --idioma <código>
+python traductor.py mi-curso.zip --idioma ca,en,fr
+python traductor.py mi-curso.zip --idioma ca --salida ./traducciones/
 
-# Frontend
-cd frontend
-npm install
-npm run dev
-
-# Tests
-cd backend && pytest --cov=app
+# Verificación de sintaxis
+python -m py_compile traductor.py
 ```
 
 ## Tech Stack
 
-### Backend
-- FastAPI + Python 3.14 + Pydantic
-- Celery + Redis (procesamiento asíncrono)
-- Supabase (PostgreSQL + Storage + Auth)
-- Anthropic Claude API (traducción)
-- lxml + BeautifulSoup4 (parsing)
-
-### Frontend
-- React 18 + Vite + TypeScript
-- Tailwind CSS v3
-- Supabase Auth
+- **Python 3.14** — Runtime
+- **lxml** — Parsing XML/SCORM manifests (etree, XPath)
+- **BeautifulSoup4** — Parsing HTML para extracción de segmentos
+- **deep-translator** — Google Translate API wrapper (async)
+- **asyncio** — Procesamiento concurrente de segmentos
 
 ## Architecture
 
+Archivo único `traductor.py` con arquitectura de clases pipeline:
+
 ```
-┌─────────────┐      ┌──────────────┐      ┌─────────────┐
-│   Frontend  │ ───> │  FastAPI API │ ───> │  Celery     │
-│  (React)    │      │  (Python)    │      │  Worker     │
-└─────────────┘      └──────────────┘      └─────────────┘
-                            │                      │
-                            ▼                      ▼
-                     ┌─────────────┐        ┌─────────────┐
-                     │  Supabase   │        │  Claude API │
-                     │  (DB + Auth)│        │  (Translate)│
-                     └─────────────┘        └─────────────┘
+ZIP Input → ScormParser → ContentExtractor → Translator → ScormRebuilder → ZIP Output
 ```
 
-## API Endpoints
+| Clase | Responsabilidad |
+|:---|:---|
+| `ScormParser` | Extrae ZIP, detecta versión SCORM (1.2/2004), localiza manifest y HTML |
+| `ContentExtractor` | Extrae segmentos traducibles de manifest XML, HTML y Articulate Rise (base64 JSON) |
+| `Translator` | Traduce segmentos async via Google Translate con rate limiting |
+| `ScormRebuilder` | Aplica traducciones a los ficheros originales y reempaqueta ZIP |
 
-### Autenticación
-- `POST /api/v1/auth/signup` - Registro
-- `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/logout` - Logout
-- `POST /api/v1/auth/refresh` - Renovar token
+**Modelos de datos** (dataclasses): `Segment`, `ScormPackage`, `ExtractionResult`
 
-### Traducción
-- `POST /api/v1/upload` - Subir paquete SCORM
-- `GET /api/v1/jobs/{job_id}` - Status del job
-- `GET /api/v1/download/{job_id}/{lang}` - Descargar traducción
+**Logging:** JSON estructurado via `JsonFormatter` (clase custom de `logging.Formatter`)
 
-## Services
+## Formatos Soportados
 
-- API: `http://localhost:8000` (Docs: `/docs`)
-- Frontend: `http://localhost:5173`
+- **SCORM 1.2** — Manifest `imsmanifest.xml` con namespace `adlcp`
+- **SCORM 2004** — Manifest con namespace `adlcp` v2004
+- **Articulate Rise** — HTML con JSON embebido en base64 (patrón `window.defined_data`)
+- **HTML estándar** — Extracción directa con BeautifulSoup
 
-## CLI Tool
+## Idiomas
 
-Herramienta de línea de comandos en `traductor-scorm-cli/`:
-```bash
-cd traductor-scorm-cli
-pip install -r requirements.txt
-python traductor.py
-```
+`es`, `en`, `ca`, `fr`, `de`, `it`, `pt`, `eu`, `gl`
+
+## Convenciones de Código
+
+- Funciones ≤ 20 líneas (SOLID/SRP). Si excede, refactorizar en métodos privados.
+- Excepciones específicas (prohibido bare `except:` o `except Exception` genérico).
+- Logging JSON estructurado (prohibido `print()`).
+- Reemplazo contextual de strings (primera ocurrencia, no `.replace()` global en HTML).
+- Type hints completos en todas las firmas.
+- Nomenclatura de código en inglés; interfaz/comentarios en español.

@@ -13,6 +13,7 @@ Uso:
 import argparse
 import asyncio
 import base64
+import copy
 import json
 import logging
 import re
@@ -27,6 +28,15 @@ from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 from lxml import etree
+
+# ============================================================================
+# CONSTANTES DE FLUJO BATCH
+# ============================================================================
+
+SCRIPT_DIR = Path(__file__).parent
+PENDING_DIR = SCRIPT_DIR / "pendientes"
+PROCESSED_DIR = SCRIPT_DIR / "procesados"
+TRANSLATED_DIR = SCRIPT_DIR / "traducidos"
 
 # ============================================================================
 # LOGGING ESTRUCTURADO
@@ -85,6 +95,7 @@ class ScormPackage:
     version: str
     title: Optional[str]
     html_files: List[str]
+    root_dir: str = ""  # Directorio raíz dentro del ZIP original
 
 
 @dataclass
@@ -119,12 +130,16 @@ class ScormParser:
         tree = etree.parse(str(extract_path / manifest_path))
         root = tree.getroot()
 
+        # Extraer directorio raíz del manifest path (ej: "curso/imsmanifest.xml" -> "curso")
+        root_dir = manifest_path.rsplit('/', 1)[0] if '/' in manifest_path else ""
+
         return ScormPackage(
             zip_path=zip_path,
             extracted_path=scorm_root,
             version=self._detect_version(root),
             title=self._extract_title(root),
             html_files=self._find_html_files(scorm_root),
+            root_dir=root_dir,
         )
 
     def _extract_zip(self, zip_path: Path, extract_path: Path) -> str:
@@ -136,6 +151,7 @@ class ScormParser:
         Raises:
             ValueError: Si no encuentra manifest.
         """
+        import unicodedata
         extract_path.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(zip_path, 'r') as z:
@@ -143,12 +159,30 @@ class ScormParser:
             if not manifest_path:
                 raise ValueError("No se encontró imsmanifest.xml")
 
-            # Extraer archivos (salvo __MACOSX)
             for member in z.namelist():
                 if not member.startswith('__MACOSX'):
-                    z.extract(member, extract_path)
+                    normalized = self._fix_corrupted_unicode(member)
+                    target_path = extract_path / normalized
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    if not member.endswith('/'):
+                        with z.open(member) as src, open(target_path, 'wb') as dst:
+                            dst.write(src.read())
 
-        return manifest_path
+        return self._fix_corrupted_unicode(manifest_path)
+
+    def _fix_corrupted_unicode(self, name: str) -> str:
+        """Corregir nombres de archivo con Unicode corrupto (macOS NFD mal codificado)."""
+        import unicodedata
+        # Patrón: vocal + ╠ü (U+2560 U+00FC) = vocal con acento mal codificado
+        replacements = {
+            'a\u2560\u00fc': 'á', 'e\u2560\u00fc': 'é', 'i\u2560\u00fc': 'í',
+            'o\u2560\u00fc': 'ó', 'u\u2560\u00fc': 'ú', 'n\u2560\u0192': 'ñ',
+            'A\u2560\u00fc': 'Á', 'E\u2560\u00fc': 'É', 'I\u2560\u00fc': 'Í',
+            'O\u2560\u00fc': 'Ó', 'U\u2560\u00fc': 'Ú', 'N\u2560\u0192': 'Ñ',
+        }
+        for bad, good in replacements.items():
+            name = name.replace(bad, good)
+        return unicodedata.normalize('NFC', name)
     
     def _find_manifest(self, file_list: List[str]) -> Optional[str]:
         """Buscar imsmanifest.xml en el ZIP."""
@@ -328,10 +362,20 @@ class ContentExtractor:
                 self._extract_from_json(item, f"{path}[{i}]", segments)
 
     def _is_skippable_key(self, key: str) -> bool:
-        """Determinar si una clave de JSON debe ignorarse."""
-        non_translatable = {'id', 'key', 'src', 'href', 'type', 'color', 'icon',
-                           'media', 'settings', 'background'}
-        return key in non_translatable
+        """Determinar si una clave de JSON debe ignorarse (recursión)."""
+        skip_recursion = {'id', 'key', 'src', 'href', 'color', 'icon', 'media',
+                         'settings', 'background', 'exportSettings'}
+        return key in skip_recursion
+
+    def _is_translatable_key(self, key: str, path: str) -> bool:
+        """Determinar si un campo debe traducirse (whitelist estricta)."""
+        # Campos de contenido (RISE_FIELDS)
+        if key.lower() in self.RISE_FIELDS:
+            return True
+        # Labels de UI en labelSet
+        if 'labelSet.labels' in path:
+            return True
+        return False
 
     def _process_json_value(self, value: str, key: str, path: str, segments: List[Segment]) -> None:
         """Procesar un valor de string en JSON Rise."""
@@ -340,12 +384,14 @@ class ContentExtractor:
         if not text or len(text) < 3:
             return
 
-        # Verificar si es texto traducible
-        is_translatable = key.lower() in self.RISE_FIELDS
-        is_ui_label = 'labelSet.labels' in path
-        is_valid_text = not self._is_non_text(text) and (is_translatable or is_ui_label or self._is_real_text(text))
+        # Solo traducir campos explícitamente permitidos (whitelist)
+        if not self._is_translatable_key(key, path):
+            return
 
-        if is_valid_text:
+        if self._is_non_text(text):
+            return
+
+        if True:
             seg_id = f"rise_{path.replace('.', '_')}"
             segments.append(Segment(
                 id=seg_id,
@@ -476,19 +522,28 @@ class Translator:
 
     async def _translate_segment(self, seg: Segment, source_lang: str, target_lang: str) -> Optional[str]:
         """Traducir un segmento individual."""
-        text = self._clean_html(seg.text) if seg.is_html else seg.text
+        if seg.is_html:
+            return await self._translate_html_segment(seg.text, source_lang, target_lang)
 
-        if not text or len(text) < 2:
+        if not seg.text or len(seg.text) < 2:
             return None
 
-        translated = await self._translate_text(text, source_lang, target_lang)
-        self.chars_translated += len(text)
+        translated = await self._translate_text(seg.text, source_lang, target_lang)
+        self.chars_translated += len(seg.text)
+        return translated
 
-        # Si era HTML, reconstruir con traducción
-        if seg.is_html:
-            return self._replace_in_html(seg.text, text, translated)
-        else:
-            return translated
+    async def _translate_html_segment(self, html: str, source_lang: str, target_lang: str) -> str:
+        """Traducir HTML nodo por nodo preservando estructura."""
+        from bs4 import NavigableString
+        soup = BeautifulSoup(html, 'html.parser')
+
+        for node in list(soup.descendants):
+            if isinstance(node, NavigableString) and node.strip() and len(node.strip()) >= 2:
+                translated = await self._translate_text(str(node), source_lang, target_lang)
+                self.chars_translated += len(node)
+                node.replace_with(translated)
+
+        return str(soup)
 
     async def _translate_text(self, text: str, source: str, target: str) -> str:
         """Traducir texto individual."""
@@ -498,19 +553,6 @@ class Translator:
             lambda: GoogleTranslator(source=source, target=target).translate(text)
         )
     
-    def _clean_html(self, html: str) -> str:
-        """Extraer texto de HTML."""
-        soup = BeautifulSoup(html, 'html.parser')
-        return soup.get_text(separator=' ', strip=True)
-
-    def _replace_in_html(self, original_html: str, original_text: str, translated: str) -> str:
-        """Reemplazar texto en HTML manteniendo estructura (primera ocurrencia solo)."""
-        # Buscar la primera ocurrencia para evitar múltiples reemplazos
-        idx = original_html.find(original_text)
-        if idx != -1:
-            return original_html[:idx] + translated + original_html[idx + len(original_text):]
-        logger.warning(f"Text not found in HTML: {original_text[:50]}")
-        return original_html
 
 
 # ============================================================================
@@ -562,17 +604,54 @@ class ScormRebuilder:
                 self._apply_to_html(full_path, segments, translations)
 
     def _create_zip(self, package: ScormPackage, working_dir: Path, output_dir: Path, target_lang: str) -> Path:
-        """Crear archivo ZIP del paquete traducido."""
+        """Crear archivo ZIP preservando estructura exacta del original."""
+        import unicodedata
         output_name = f"{package.zip_path.stem}_{target_lang}.zip"
         output_path = output_dir / output_name
 
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as z:
-            for file in working_dir.rglob('*'):
-                if file.is_file():
-                    arcname = file.relative_to(working_dir)
-                    z.write(file, arcname)
+        # Mapear archivos modificados en working_dir (nombre normalizado -> path)
+        modified_files = self._build_modified_files_map(package, working_dir)
+
+        with zipfile.ZipFile(package.zip_path, 'r') as z_orig:
+            with zipfile.ZipFile(output_path, 'w') as z_out:
+                for info in z_orig.infolist():
+                    # Normalizar nombre para buscar en modified_files
+                    normalized = unicodedata.normalize('NFC', info.filename)
+
+                    if normalized in modified_files:
+                        # Archivo traducido: usar contenido del working_dir
+                        self._write_modified_entry(z_out, info, modified_files[normalized])
+                    else:
+                        # Entrada original: copiar exactamente (preserva __MACOSX, etc.)
+                        self._copy_original_entry(z_orig, z_out, info)
 
         return output_path
+
+    def _build_modified_files_map(self, package: ScormPackage, working_dir: Path) -> dict[str, Path]:
+        """Construir mapa de archivos modificados: arcname normalizado -> path local."""
+        import unicodedata
+        modified: dict[str, Path] = {}
+        for file in working_dir.rglob('*'):
+            if file.is_file():
+                rel_path = file.relative_to(working_dir)
+                if package.root_dir:
+                    arcname = f"{package.root_dir}/{rel_path}"
+                else:
+                    arcname = str(rel_path)
+                arcname = unicodedata.normalize('NFC', arcname)
+                modified[arcname] = file
+        return modified
+
+    def _write_modified_entry(self, z_out: zipfile.ZipFile, orig_info: zipfile.ZipInfo, local_path: Path) -> None:
+        """Escribir archivo modificado preservando atributos del original."""
+        new_info = copy.copy(orig_info)  # Preserva TODOS los atributos
+        with open(local_path, 'rb') as f:
+            z_out.writestr(new_info, f.read())
+
+    def _copy_original_entry(self, z_orig: zipfile.ZipFile, z_out: zipfile.ZipFile, info: zipfile.ZipInfo) -> None:
+        """Copiar entrada del ZIP original preservando todos los atributos."""
+        new_info = copy.copy(info)  # Preserva TODOS los atributos
+        z_out.writestr(new_info, z_orig.read(info.filename))
     
     def _is_rise_file(self, path: Path) -> bool:
         """Verificar si es archivo Rise."""
@@ -585,18 +664,26 @@ class ScormRebuilder:
             return False
     
     def _apply_to_manifest(self, path: Path, segments: List[Segment], translations: Dict[str, str]):
-        """Aplicar traducciones al manifest XML."""
+        """Aplicar traducciones al manifest XML preservando formato original."""
         try:
-            tree = etree.parse(str(path))
+            with open(path, 'r', encoding='utf-8') as f:
+                content = f.read()
 
+            # Reemplazar textos dentro de tags <title>
             for seg in segments:
-                self._apply_segment_to_manifest(tree, seg, translations)
+                if seg.id in translations:
+                    # Escapar caracteres XML en el texto original y traducido
+                    orig_escaped = seg.text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    trans_escaped = translations[seg.id].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    # Reemplazar primera ocurrencia
+                    content = content.replace(f'<title>{seg.text}</title>', f'<title>{translations[seg.id]}</title>', 1)
+                    if orig_escaped != seg.text:
+                        content = content.replace(f'<title>{orig_escaped}</title>', f'<title>{trans_escaped}</title>', 1)
 
-            tree.write(str(path), encoding='utf-8', xml_declaration=True)
-        except etree.XMLSyntaxError as e:
-            logger.error(f"Invalid XML in manifest {path}", exc_info=True)
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
         except (IOError, OSError) as e:
-            logger.error(f"Cannot write manifest {path}", exc_info=True)
+            logger.error(f"Cannot read/write manifest {path}", exc_info=True)
         except Exception as e:
             logger.error(f"Error applying translations to manifest: {e}", exc_info=True)
 
@@ -720,7 +807,7 @@ def _validate_args(args) -> tuple[Path, list[str], str, Path]:
 
     target_langs = [lang.strip() for lang in args.idioma.split(',')]
     source_lang = args.origen
-    output_dir = Path(args.salida)
+    output_dir = Path(args.salida) if args.salida else Path('.')
     output_dir.mkdir(parents=True, exist_ok=True)
 
     return zip_path, target_langs, source_lang, output_dir
@@ -822,6 +909,56 @@ def _log_translation_summary(translator: Translator, target_langs: list[str]) ->
 
 
 # ============================================================================
+# FLUJO BATCH: pendientes → traducidos + procesados
+# ============================================================================
+
+def _ensure_workflow_dirs() -> None:
+    """Crear directorios de flujo batch si no existen."""
+    PENDING_DIR.mkdir(exist_ok=True)
+    PROCESSED_DIR.mkdir(exist_ok=True)
+    TRANSLATED_DIR.mkdir(exist_ok=True)
+
+
+def _find_pending_files() -> List[Path]:
+    """Buscar archivos ZIP en carpeta pendientes/."""
+    return sorted(PENDING_DIR.glob("*.zip"))
+
+
+def _move_to_processed(zip_path: Path) -> None:
+    """Mover archivo original a carpeta procesados/."""
+    dest = PROCESSED_DIR / zip_path.name
+    if dest.exists():
+        dest.unlink()
+    shutil.move(str(zip_path), str(dest))
+    logger.info("Moved to processed", extra={"file": zip_path.name})
+
+
+async def _run_batch(target_langs: List[str], source_lang: str) -> None:
+    """Ejecutar traducción en modo batch para todos los archivos en pendientes/."""
+    _ensure_workflow_dirs()
+    pending_files = _find_pending_files()
+
+    if not pending_files:
+        logger.warning("No pending files found in pendientes/")
+        return
+
+    logger.info("Batch mode started", extra={"files": len(pending_files)})
+
+    for zip_path in pending_files:
+        temp_dir = Path(tempfile.mkdtemp())
+        try:
+            logger.info("Processing file", extra={"file": zip_path.name})
+            await _run_translation(zip_path, target_langs, source_lang, TRANSLATED_DIR, temp_dir)
+            _move_to_processed(zip_path)
+        except Exception as e:
+            logger.error(f"Failed to process {zip_path.name}: {e}", exc_info=True)
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    logger.info("Batch mode completed")
+
+
+# ============================================================================
 # CLI PRINCIPAL
 # ============================================================================
 
@@ -832,21 +969,35 @@ async def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Ejemplos:
-  python traductor.py curso.zip --idioma ca
-  python traductor.py curso.zip --idioma en,fr,de
-  python traductor.py curso.zip --idioma ca --salida ./traducciones/
+  python traductor.py --idioma ca                    # Modo batch: procesa pendientes/
+  python traductor.py curso.zip --idioma ca          # Archivo único
+  python traductor.py curso.zip --idioma en,fr,de    # Múltiples idiomas
         '''
     )
 
-    parser.add_argument('archivo', help='Archivo SCORM (.zip) a traducir')
+    parser.add_argument('archivo', nargs='?', default=None,
+                        help='Archivo SCORM (.zip). Si se omite, procesa pendientes/')
     parser.add_argument('--idioma', '-i', required=True,
                         help='Idioma(s) destino (ej: ca, en,fr,de)')
     parser.add_argument('--origen', '-o', default='es',
                         help='Idioma origen (default: es)')
-    parser.add_argument('--salida', '-s', default='.',
-                        help='Carpeta de salida (default: directorio actual)')
+    parser.add_argument('--salida', '-s', default=None,
+                        help='Carpeta de salida (default: traducidos/ en batch, . en archivo único)')
 
     args = parser.parse_args()
+    target_langs = [lang.strip() for lang in args.idioma.split(',')]
+    source_lang = args.origen
+
+    # Modo batch: sin archivo, procesa pendientes/
+    if args.archivo is None:
+        logger.info("Starting batch mode", extra={
+            "source_lang": source_lang,
+            "target_langs": target_langs
+        })
+        await _run_batch(target_langs, source_lang)
+        return
+
+    # Modo archivo único
     zip_path, target_langs, source_lang, output_dir = _validate_args(args)
 
     logger.info("Starting SCORM Translator CLI", extra={
@@ -856,7 +1007,6 @@ Ejemplos:
         "output_dir": str(output_dir)
     })
 
-    # Crear directorio temporal
     temp_dir = Path(tempfile.mkdtemp())
 
     try:
@@ -865,7 +1015,6 @@ Ejemplos:
         logger.error(f"Translation failed: {e}", exc_info=True)
         sys.exit(1)
     finally:
-        # Limpiar temporal
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 

@@ -1,5 +1,27 @@
 # Log de Auditoría y Actividad - Traductor SCORM Manual
 
+### [2026-02-06 10:00] | PROMPT: Restaurar flujo batch pendientes → traducidos + procesados | RESULTADO: Reimplementado flujo batch que se había perdido. Añadidas constantes SCRIPT_DIR, PENDING_DIR, PROCESSED_DIR, TRANSLATED_DIR. Añadidas funciones `_ensure_workflow_dirs()`, `_find_pending_files()`, `_move_to_processed()`, `_run_batch()`. Modificado CLI: archivo ahora es opcional (nargs='?'), si se omite ejecuta modo batch. Traducciones van a traducidos/, originales se mueven a procesados/. Archivo: traductor-scorm-cli/traductor.py
+
+### [2026-02-05 15:30] | PROMPT: Fix formato ZIP para compatibilidad LMS (copy.copy ZipInfo) | RESULTADO: Corregido `_write_modified_entry()` y `_copy_original_entry()` para usar `copy.copy(orig_info)` en lugar de crear nuevo ZipInfo. Preserva TODOS los atributos (date_time, flag_bits, create_version) que antes se perdían causando fechas inválidas 1980-01-01 rechazadas por LMS. Añadido import copy. Archivo: traductor-scorm-cli/traductor.py (líneas 14, 636-649)
+
+### [2026-02-05 14:30] | PROMPT: Fix formato ZIP v2 - preservar estructura exacta | RESULTADO: Reescrito completamente `_create_zip()` para copiar entradas del ZIP original preservando: (1) orden exacto de entradas, (2) `compress_type` y `external_attr` idénticos, (3) entradas `__MACOSX/` y metadatos. Solo se reemplaza contenido de archivos traducidos. Añadidos métodos auxiliares `_build_modified_files_map()`, `_write_modified_entry()`, `_copy_original_entry()`. Archivo: traductor-scorm-cli/traductor.py (líneas 596-653)
+
+### [2026-02-05 14:00] | PROMPT: Fix formato ZIP para compatibilidad LMS | RESULTADO: Intento inicial - insuficiente. Solo cambiaba compress_type de directorios pero perdía __MACOSX/ y external_attr
+
+### [2026-02-05 13:00] | PROMPT: Fix imágenes no visibles en Rise SCORM | RESULTADO: (1) Estructura ZIP perdía directorio raíz — añadido campo `root_dir` a ScormPackage y preservado en `_create_zip()`. (2) Unicode corrupto en nombres de archivo — ZIPs de macOS con NFD mal codificado (`o╠ü` en vez de `ó`). Añadido `_fix_corrupted_unicode()` que repara patrones vocales+╠ü y normaliza a NFC. Archivo: traductor-scorm-cli/traductor.py
+
+### [2026-02-05 12:00] | PROMPT: Fix completo traducción Rise SCORM | RESULTADO: (1) Cambiado de blacklist a whitelist estricta en `_is_translatable_key()` — solo traduce campos en RISE_FIELDS y labelSet.labels. (2) Fix traducción HTML multi-párrafo — refactorizado `_translate_segment()` para segmentos HTML usa `_translate_html_segment()` que recorre NavigableString nodos individualmente. Eliminados `_clean_html()` y `_replace_in_html()` obsoletos de Translator. Archivo: traductor-scorm-cli/traductor.py
+
+### [2026-02-05 11:00] | PROMPT: Fix traducción corrupta de Rise SCORM (campos técnicos traducidos) | RESULTADO: PARCIAL — Expandida lista non_translatable pero insuficiente. Requirió cambio a whitelist.
+
+### [2026-02-05 10:30] | PROMPT: Fix warnings "Segment text not found in HTML" | RESULTADO: REVERTIDO — Los cambios rompían la estructura del SCORM. Los warnings eran inofensivos (segmentos padre con hijos que sí se traducían correctamente).
+
+### [2026-02-04 13:00] | PROMPT: Implementar flujo batch pendientes → procesados → traducidos | RESULTADO: Añadidas constantes PENDING_DIR/PROCESSED_DIR/TRANSLATED_DIR, funciones _ensure_workflow_dirs(), _find_pending_files(), _move_to_processed(), _run_batch(), _build_arg_parser(), _run_single_file(). Modificados main() y _validate_args() para soportar modo batch (archivo opcional con nargs='?'). Creadas carpetas pendientes/, procesados/, traducidos/ con .gitkeep. Archivos: traductor-scorm-cli/traductor.py, traductor-scorm-cli/pendientes/.gitkeep, traductor-scorm-cli/procesados/.gitkeep, traductor-scorm-cli/traducidos/.gitkeep
+
+### [2026-02-04 12:00] | PROMPT: Fix traducción segmentos HTML en Rise SCORM | RESULTADO: Refactorizado Translator para usar enfoque DOM en segmentos is_html. Añadido _translate_html_segment() que recorre NavigableString nodes. Eliminados _clean_html() y _replace_in_html() de Translator (obsoletos). Archivo: traductor-scorm-cli/traductor.py
+
+---
+
 ## Auditoría Completa de Código - 2026-01-30 14:30
 
 **Autor:** Claude Code (Haiku 4.5)
@@ -1108,3 +1130,11 @@ CLAUDE.md Compliance           78%     100%      +28% ✅
 ---
 
 **✅ FASE 3 COMPLETADA | AUDITORÍA Y REFACTORIZACIÓN TERMINADAS | CÓDIGO EXCELENTE**
+
+---
+
+### [2026-02-04 12:00] | PROMPT: Actualizar CLAUDE.md y CLAUDE.local.md — Enfocar ámbito al CLI | RESULTADO: Ficheros actualizados
+
+**Cambios:**
+- `CLAUDE.md` — Reescrito completo: eliminadas referencias a backend FastAPI, frontend React, Docker, API endpoints, Supabase. Enfocado exclusivamente a `traductor-scorm-cli/` con arquitectura pipeline real, stack actual (lxml, BS4, deep-translator), comandos de desarrollo y convenciones de código.
+- `CLAUDE.local.md` — Actualizado: eliminadas referencias a stacks inactivos (FastAPI, React, SQLAlchemy). Stack activo correcto. Historial de auditorías consolidado. Pendientes actualizados.
