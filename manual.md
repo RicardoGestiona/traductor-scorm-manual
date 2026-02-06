@@ -8,8 +8,6 @@
 ## Instalación
 
 ```bash
-cd traductor-scorm-cli
-
 # Crear entorno virtual
 python3 -m venv venv
 
@@ -89,10 +87,11 @@ python traductor.py curso-fr.zip --idioma es --origen fr
 ## Estructura de Carpetas
 
 ```
-traductor-scorm-cli/
+traductor-scorm-manual/
 ├── traductor.py          # Script principal
 ├── requirements.txt      # Dependencias
 ├── manual.md             # Este manual
+├── README.md             # Documentación del proyecto
 ├── pendientes/           # Entrada: ZIPs a traducir
 ├── procesados/           # Originales ya procesados
 └── traducidos/           # Salida: ZIPs traducidos

@@ -1,5 +1,7 @@
 # Log de Auditoría y Actividad - Traductor SCORM Manual
 
+### [2026-02-06 10:15] | PROMPT: Crear manual.md con instrucciones de uso | RESULTADO: Creado manual.md con secciones: Requisitos, Instalación, Uso (batch/archivo único), Idiomas, Ejemplos, Estructura de carpetas, Formatos SCORM, Solución de problemas. Commit 6581f77. Archivo: traductor-scorm-cli/manual.md
+
 ### [2026-02-06 10:00] | PROMPT: Restaurar flujo batch pendientes → traducidos + procesados | RESULTADO: Reimplementado flujo batch que se había perdido. Añadidas constantes SCRIPT_DIR, PENDING_DIR, PROCESSED_DIR, TRANSLATED_DIR. Añadidas funciones `_ensure_workflow_dirs()`, `_find_pending_files()`, `_move_to_processed()`, `_run_batch()`. Modificado CLI: archivo ahora es opcional (nargs='?'), si se omite ejecuta modo batch. Traducciones van a traducidos/, originales se mueven a procesados/. Archivo: traductor-scorm-cli/traductor.py
 
 ### [2026-02-05 15:30] | PROMPT: Fix formato ZIP para compatibilidad LMS (copy.copy ZipInfo) | RESULTADO: Corregido `_write_modified_entry()` y `_copy_original_entry()` para usar `copy.copy(orig_info)` en lugar de crear nuevo ZipInfo. Preserva TODOS los atributos (date_time, flag_bits, create_version) que antes se perdían causando fechas inválidas 1980-01-01 rechazadas por LMS. Añadido import copy. Archivo: traductor-scorm-cli/traductor.py (líneas 14, 636-649)

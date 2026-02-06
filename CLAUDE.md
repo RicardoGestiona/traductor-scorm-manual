@@ -6,23 +6,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Traductor SCORM CLI** — Herramienta de línea de comandos (Python 3.14) para traducir paquetes SCORM (1.2, 2004, Articulate Rise) a múltiples idiomas usando Google Translate, preservando la estructura e integridad del contenido e-learning.
 
-**Ámbito activo:** Solo `traductor-scorm-cli/`. El resto de directorios (pendientes/, ficheros raíz) son auxiliares.
-
 ## Build & Development Commands
 
 ```bash
 # Setup
-cd traductor-scorm-cli
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
-# Ejecutar traducción
-python traductor.py <archivo.zip> --idioma <código>
+# Modo batch (procesa pendientes/)
+python traductor.py --idioma ca
+
+# Archivo único
 python traductor.py mi-curso.zip --idioma ca,en,fr
-python traductor.py mi-curso.zip --idioma ca --salida ./traducciones/
 
 # Verificación de sintaxis
 python -m py_compile traductor.py
+```
+
+## Project Structure
+
+```
+traductor-scorm-manual/
+├── traductor.py          # Script principal
+├── requirements.txt      # Dependencias Python
+├── manual.md             # Manual de usuario
+├── README.md             # Documentación del proyecto
+├── CLAUDE.md             # Instrucciones para Claude Code
+├── log-promts.md         # Registro de actividad
+├── pendientes/           # Entrada: ZIPs a traducir
+├── procesados/           # Originales ya procesados
+└── traducidos/           # Salida: ZIPs traducidos
 ```
 
 ## Tech Stack
